@@ -1,0 +1,69 @@
+{
+  "name": "order-history-search",
+  "productName": "Gold Medal Hub",
+  "version": "0.9.1",
+  "description": "Gold Medal Awards & Apparel (GMAA) - internal hub: order history search",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64 --publish never",
+    "release": "electron-builder --win nsis --x64 --publish always",
+    "check-data": "node tools/check-no-data.js"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.goldmedalawards.hub",
+    "productName": "Gold Medal Hub",
+    "copyright": "Gold Medal Awards & Apparel",
+    "files": [
+      "main.js",
+      "preload.js",
+      "cloud.js",
+      "sync.js",
+      "renderer/**",
+      "assets/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "Gold-Medal-Hub-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Gold Medal Hub (GMAA)",
+      "uninstallDisplayName": "Gold Medal Hub (GMAA)",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Gold-Medal-Awards-Apparel",
+        "repo": "GMAA-Hub",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "author": "WiseFaro",
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  }
+}

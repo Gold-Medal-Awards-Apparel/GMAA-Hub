@@ -1,0 +1,23 @@
+name: Build and publish Windows installer
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Make sure no customer data or tokens are in the repo
+        run: node tools/check-no-data.js
+      - name: Install components
+        run: npm install --no-audit --no-fund
+      - name: Build installer and publish release
+        run: npx electron-builder --win nsis --x64 --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

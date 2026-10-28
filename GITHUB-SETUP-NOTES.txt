@@ -1,0 +1,42 @@
+GOLD MEDAL HUB - PUBLISHING THROUGH GITHUB (step by step)
+
+WHAT IS READY IN THIS FOLDER
+- package.json: Windows installer settings, GitHub release target (owner "Gold-Medal-Awards-Apparel", repo "GMAA-Hub").
+  If your organization or repository has a different name, change those two words in package.json (near the bottom, "publish").
+- .github/workflows/release.yml: when a version tag (like v0.9.1) is pushed, GitHub's cloud builds the installer
+  and publishes it as a Release. It needs no passwords from you.
+- main.js: installed copies check GitHub Releases a few seconds after opening, download a new version, and ask "Restart now / Later".
+- .gitignore + tools/check-no-data.js: customer data, spreadsheets, tokens and inventory-seed.json can never be uploaded.
+  The build stops with a message if one is found.
+
+ONE-TIME SETUP
+1. github.com > "+" > New repository. Owner: Gold-Medal-Awards-Apparel. Name: GMAA-Hub. Choose PUBLIC (updates need a public repo).
+   Do not tick "Add a README".
+2. Upload this folder. Easiest: install GitHub Desktop (free), File > Add local repository > choose this folder.
+   It will say it is not a repository: click "create a repository", then "Publish repository", UNTICK "Keep this code private" only if you picked public above.
+   Before publishing, look at the list of changed files: you must NOT see data-private, OrderHistory-OldStore.json, any .xlsx or .csv, or inventory-seed.json.
+3. Give it a version tag that matches package.json (this folder is version 0.9.1, so the tag is v0.9.1):
+   GitHub Desktop > History > right-click the top commit > Create Tag... > v0.9.1, then Push origin.
+4. On github.com open the repository > Actions. A build named "Build and publish Windows installer" runs (about 5 to 10 minutes).
+5. When it is green, open the repository > Releases. The installer is "Gold-Medal-Hub-Setup-0.9.1.exe".
+
+INSTALLING ON EACH COMPUTER
+- Download the .exe from the Releases page and run it. Windows may show "Windows protected your PC" because the installer is not code-signed:
+  click "More info", then "Run anyway". (Code signing costs money; nothing paid will be set up without your written authorization.)
+- It installs for the current Windows user only (no admin password), puts an icon on the Desktop, and can be found by searching "Gold Medal" or "GMAA".
+- Your saved data is kept: the installed app uses the same data folder as the .zip version, so the old-store data and connections stay.
+- A computer that never ran the .zip version needs, once: File > Import old-store data file (from the USB stick), File > Shopify connection, and File > Shared database connection.
+  Those connections are stored per computer and cannot be copied.
+
+SHIPPING A NEW VERSION LATER
+1. Replace the files in your repository folder with the new ones (keep .git). The version in package.json goes up (for example 0.9.2).
+2. In GitHub Desktop: commit, push, then create the tag v0.9.2 and push it.
+3. Wait for the green build; every installed computer updates itself the next time the app is opened online.
+
+INVENTORY STARTER LIST
+- inventory-seed.json holds your spreadsheet's costs and counts, so it is not uploaded. To load it, put the file in
+  %APPDATA%\order-history-search\data\ on ONE computer, open Inventory and click "Load my spreadsheet list". It goes into the shared database, so the other computers see it.
+
+NEVER
+- Never put the Shopify Client secret, the Cloudflare token, or any GitHub password or token into a chat or a file in this folder.
+- Never upload OrderHistory-OldStore.json anywhere.

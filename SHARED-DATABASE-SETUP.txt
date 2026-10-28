@@ -1,0 +1,21 @@
+SHARED NOTES + ORDER BOARD - ONE-TIME SETUP (free)
+
+The shop's shared database already exists in Cloudflare (named gmaa-hub). Each computer only needs to be connected once.
+
+1. Make an API token (once; reuse the same token on every computer):
+   - Sign in at dash.cloudflare.com
+   - Click your profile icon (top right) > Profile > API Tokens > Create Token > Create Custom Token
+   - Name: Gold Medal Hub
+   - Permissions: Account | D1 | Edit
+   - Account Resources: Include | your account
+   - Continue > Create Token. COPY THE TOKEN NOW - Cloudflare shows it only once. Keep it in a password manager.
+2. Find your Account ID: on dash.cloudflare.com, open Workers & Pages; the Account ID is on the right side.
+   (It is also the 32-character part of the web address after dash.cloudflare.com/ .)
+3. In the app: File > Shared database connection. Account ID + token; the Database ID is already filled in.
+   Click Save & test.
+4. Open "Order board", click "Set up staff and PINs". The FIRST person you add becomes the admin and is signed in.
+   Then add everyone else (name + a 4-digit PIN; every PIN must be different). Choose who receives the job updates (e.g. the office manager).
+   Everyone signs in by typing their 4-digit PIN (no name, no button) to make changes; it signs out after 5 minutes of no activity.
+   Viewing the board, and the TV display, never need a PIN.
+
+Never paste the token into a chat or email. To replace it later, make a new token and re-enter it.

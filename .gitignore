@@ -1,0 +1,17 @@
+# NEVER upload customer data, tokens, or build output
+OrderHistory-OldStore.json
+old-store*.json
+new-store*.json
+*.xlsx
+*.csv
+.env
+.env.*
+*.pem
+*.pfx
+*.key
+node_modules/
+dist/
+.shortcuts-done
+*.log
+data-private/
+inventory-seed.json
