@@ -51,8 +51,10 @@
     if (!parsed.units.length) { out.innerHTML = ''; return; }
     const cutoff = (new Date().getFullYear() - 2) + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-01';
     const items = new Map(), all = [], recent = [], tiers = {}, byYear = new Map();
+    let latest = null;
     for (const i of rows) {
       const r = D.r[i], p = r[6], q = Math.max(1, r[5] || 1);
+      if (!latest || r[0] >= latest.date) latest = { date: r[0], price: p, qty: q, name: r[4] };
       all.push(p); if (r[0] >= cutoff) recent.push(p);
       const y = r[0].slice(0, 4); if (!byYear.has(y)) byYear.set(y, []); byYear.get(y).push(p);
       const b = bucket(q); (tiers[b] = tiers[b] || []).push(p);
@@ -73,7 +75,7 @@
     if (!rows.length) html += '<div class="card">Nothing in the order history matches "' + esc(text) + '". Try fewer words or a known abbreviation.</div>';
     else {
       const basis = recent.length >= 3 ? recent : all, basisLbl = recent.length >= 3 ? 'the last 2 years' : 'all years (little recent data)';
-      html += '<div class="kpis"><div class="card">Times sold<b>' + rows.length.toLocaleString() + '</b></div>' +
+      html += '<div class="kpis"><div class="card">Most recent price<b>' + m2(latest.price) + '</b><span style="color:var(--muted);font-size:12px;display:block">' + esc(latest.date) + ' · qty ' + latest.qty + ' · ' + esc(latest.name) + '</span></div><div class="card">Times sold<b>' + rows.length.toLocaleString() + '</b></div>' +
         '<div class="card">Median paid (recent)<b>' + m2(med(basis)) + '</b></div>' +
         '<div class="card">Range (recent)<b>' + m2(Math.min(...basis)) + ' – ' + m2(Math.max(...basis)) + '</b></div>' +
         '<div class="card">Median paid (all time)<b>' + m2(med(all)) + '</b></div></div>';
@@ -98,7 +100,7 @@
     ps.iLimit = 25; ps.pLimit = 40;
     drawItems(); drawProds();
   }
-  const ps = { iSort: 'orders', iDir: -1, iLimit: 25, pSort: '', pDir: 1, pLimit: 40 };
+  const ps = { iSort: 'last', iDir: -1, iLimit: 25, pSort: '', pDir: 1, pLimit: 40 };
   let cur = { items: [], matched: [] };
   const arrow = (a, b, d) => a === b ? (d < 0 ? ' ▼' : ' ▲') : '';
   function moreBar(shown, total, id) {

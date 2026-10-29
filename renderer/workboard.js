@@ -83,7 +83,7 @@
     } else { st.err = ''; st.notes = r.notes; st.jobs = r.jobs; st.jobNotes = r.jobNotes || []; st.settings = r.settings; st.staff = r.staff || []; st.loaded = true; }
     await refreshAuth();
     if (isRecipient()) { const u = await window.api.getUpdates(); if (u && u.rows) { st.updates = u.rows; st.updatesNew = u.rows.filter(x => x.at > seenAt(':updates') && x.by !== who()).length; } }
-    paintTop();
+    paintTop(); paintDue(true);
     if (!quiet || !st.editing) draw();
   }
   async function write(fn, okMsg) {   // runs a change; asks for the PIN first if needed, then shows any message
@@ -113,6 +113,47 @@
     if (st.tab === 'board') drawBoard();
     if (st.tab === 'notes') drawNotes();
     if (st.tab === 'updates') drawUpdates();
+  }
+  // ---------------- due-date warnings (shown on every tab, every computer) ----------------
+  const warnDays = () => { const n = parseInt(st.settings.due_warn_days, 10); return n >= 1 && n <= 14 ? n : 2; };
+  function dueJobs() {   // one entry per job that still has work to do (ready-for-pickup/delivery jobs are not counted)
+    const today = new Date(new Date().toDateString()), lim = warnDays(), out = [];
+    for (const j of st.jobs) {
+      if (j.archived || !j.due || !/^\d{4}-\d\d-\d\d$/.test(j.due)) continue;
+      const s = secOf(j), open = Object.keys(s).filter(k => s[k] && s[k] !== 'done');
+      if (!open.length || open.every(k => s[k] === 'pickup' || s[k] === 'delivery')) continue;
+      const days = Math.round((new Date(j.due + 'T00:00:00') - today) / 86400000);
+      if (days <= lim) out.push({ j, days, level: days < 0 ? 'late' : days === 0 ? 'today' : 'soon' });
+    }
+    return out.sort((a, b) => a.days - b.days || (a.j.customer || '').localeCompare(b.j.customer || ''));
+  }
+  const dueWords = d => d.days < 0 ? (-d.days) + (d.days === -1 ? ' day' : ' days') + ' late' : d.days === 0 ? 'due today' : d.days === 1 ? 'due tomorrow' : 'due in ' + d.days + ' days';
+  const dueName = j => (j.order_ref ? j.order_ref + ' ' : '') + (j.customer || j.title || 'job');
+  function notifyDue(list) {   // one Windows notification per job, per level, per day, on this computer
+    let seen = {}; const day = new Date().toDateString();
+    try { seen = JSON.parse(localStorage.getItem('dueSeen') || '{}'); } catch (e) {}
+    if (seen.day !== day) seen = { day, k: {} };
+    const fresh = list.filter(d => !seen.k[d.j.id + ':' + d.level]);
+    if (!fresh.length) return;
+    fresh.forEach(d => { seen.k[d.j.id + ':' + d.level] = 1; });
+    try { localStorage.setItem('dueSeen', JSON.stringify(seen)); } catch (e) {}
+    try {
+      const body = fresh.slice(0, 4).map(d => dueName(d.j) + ' — ' + dueWords(d)).join('\n') + (fresh.length > 4 ? '\n+ ' + (fresh.length - 4) + ' more' : '');
+      const n = new Notification(fresh.length === 1 ? 'Job needs attention' : fresh.length + ' jobs need attention', { body, silent: false });
+      n.onclick = () => { try { window.focus(); $('tabBoard').click(); } catch (e) {} };
+    } catch (e) {}
+  }
+  function paintDue(notify) {
+    const bar = $('dueBar'), tb = $('tabBoard'); if (!bar) return;
+    const list = st.loaded ? dueJobs() : [];
+    if (tb) { const base = tb.dataset.label || (tb.dataset.label = tb.textContent.replace(/\s*\d+$/, '').trim()); tb.innerHTML = esc(base) + (list.length ? ' <span class="bdg">' + list.length + '</span>' : ''); }
+    if (!list.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+    const late = list.filter(d => d.level === 'late').length;
+    bar.className = 'duebar' + (late || list.some(d => d.level === 'today') ? ' hot' : '');
+    bar.innerHTML = '<span class="dueic">⚠</span><span class="duetx"><b>' + list.length + (list.length === 1 ? ' job needs' : ' jobs need') + ' attention</b>' + (late ? ' (' + late + ' late)' : '') + ': ' +
+      list.slice(0, 3).map(d => esc(dueName(d.j)) + ' <i>' + dueWords(d) + '</i>').join(' · ') + (list.length > 3 ? ' · + ' + (list.length - 3) + ' more' : '') + '</span><button class="btn" data-act="duego">View board</button>';
+    bar.style.display = 'flex';
+    if (notify) notifyDue(list);
   }
   // ---------------- board ----------------
   function dueInfo(j) {
@@ -311,6 +352,7 @@
         '<label>Add a person</label><div class="srow"><input id="sNm" placeholder="Name (as it should appear)"><input id="sPin" type="password" inputmode="numeric" maxlength="4" placeholder="4-digit PIN"><label class="chk"><input type="checkbox" id="sAdm"> admin</label><button class="btn primary" data-sx="add">Add</button></div>' : '') +
       (names.length ? '<label>' + (admin ? 'Set or reset someone\'s PIN' : 'Change my PIN') + '</label><div class="srow">' + (admin ? '<select id="pNm">' + names.map(n => '<option>' + esc(n) + '</option>').join('') + '</select>' : '<input id="pNm" value="' + esc(a.user) + '" disabled>') + (admin ? '' : '<input id="pOld" type="password" inputmode="numeric" maxlength="4" placeholder="Current PIN">') + '<input id="pNew" type="password" inputmode="numeric" maxlength="4" placeholder="New PIN"><button class="btn" data-sx="pin">Set PIN</button></div>' : '') +
       (admin && names.length ? '<label>Send job updates to</label><div class="srow"><select id="uTo"><option value="">(nobody)</option>' + names.map(n => '<option' + (n.toLowerCase() === (st.settings.updates_to || '').toLowerCase() ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + '</select><button class="btn" data-sx="to">Save</button></div><div class="note">Only this person sees the "Job updates" tab (and admins).</div>' : '') +
+      (admin ? '<label>Warn about jobs due within</label><div class="srow"><select id="dw">' + [1, 2, 3, 5, 7].map(n => '<option value="' + n + '"' + (n === warnDays() ? ' selected' : '') + '>' + n + (n === 1 ? ' day' : ' days') + '</option>').join('') + '</select><button class="btn" data-sx="dw">Save</button></div><div class="note">Everyone sees a warning banner (and a Windows notification) for unfinished jobs due within this many days, and for late ones.</div>' : '') +
       '<div class="note" id="sMsg" style="min-height:18px;margin-top:8px"></div><div style="display:flex;justify-content:flex-end"><button class="btn" data-sx="close">Close</button></div></div>';
   }
   async function staffClick(t) {
@@ -322,6 +364,7 @@
     else if (x === 'rm') { if (t.dataset.arm !== '1') { t.dataset.arm = '1'; t.textContent = 'Click again to remove'; return; } r = await window.api.removeStaff(t.dataset.n); }
     else if (x === 'admin') r = await window.api.setAdmin(t.dataset.n, t.dataset.v === '1');
     else if (x === 'to') r = await window.api.saveSetting('updates_to', $('uTo').value);
+    else if (x === 'dw') r = await window.api.saveSetting('due_warn_days', $('dw').value);
     if (!r) return;
     if (r.error) { msg(r.error.replace(/^LOCKED: /, '')); return; }
     await pull(true); await refreshAuth(); renderStaff(); msg(x === 'add' ? 'Added.' : x === 'pin' ? 'PIN saved.' : 'Saved.');
@@ -450,4 +493,10 @@
   (async () => {   // on opening: load, then ask for the PIN if staff PINs are set up
     try { const s = await window.api.cloudStatus(); if (!s.configured) return; await pull(true); if (st.auth.required && !st.auth.user) await ensureAuth(); } catch (e) {}
   })();
+  // Keep the warnings current even when nobody has the Order board open.
+  async function bgPull() { try { if (st.busy || st.editing) return; const s = await window.api.cloudStatus(); if (s && s.configured) await pull(true); } catch (e) {} }
+  setTimeout(bgPull, 4000);
+  setInterval(() => { if (!st.tab) bgPull(); }, 5 * 60 * 1000);
+  setInterval(() => paintDue(true), 60 * 1000);   // also catches the date rolling over at midnight
+  document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('#dueBar [data-act="duego"]'); if (b) $('tabBoard').click(); });
 })();
