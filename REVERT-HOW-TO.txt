@@ -1,12 +1,12 @@
 HOW TO ROLL BACK A BAD UPDATE (Gold Medal Hub)
 
 Known-good copies are kept as branches named  backup/vX.Y.Z-known-good  (the code exactly as released).
-Current safety copy: backup/v0.9.1-known-good
+Current safety copy: backup/v0.9.2-known-good
 
 Installed apps only update to a HIGHER version number, so a rollback is published as a NEW, higher version
 that contains the old, good code:
 
-1. Start from the backup branch:      git checkout -b rollback backup/v0.9.1-known-good
+1. Start from the backup branch:      git checkout -b rollback backup/v0.9.2-known-good
 2. In package.json raise the version above the bad one (bad 0.9.2 -> use 0.9.3).
 3. Merge/push it to main:             git checkout main && git reset --hard rollback && git push --force-with-lease origin main
    (or ask Claude to do it - say "roll back to 0.9.1").

@@ -85,7 +85,7 @@
     window.__DATA__=d.data; window.__BUILT__=d.built;
     const s=document.createElement('script'); s.src='app.js'; document.body.appendChild(s);
     s.onload=async()=>{
-      const cs=document.createElement('script'); cs.src='customers.js'; document.body.appendChild(cs); const ps=document.createElement('script'); ps.src='pricecheck.js'; document.body.appendChild(ps); const ws=document.createElement('script'); ws.src='workboard.js'; ws.onload=()=>{ const is=document.createElement('script'); is.src='inventory.js'; document.body.appendChild(is); }; document.body.appendChild(ws);
+      const cs=document.createElement('script'); cs.src='customers.js'; document.body.appendChild(cs); const ps=document.createElement('script'); ps.src='pricecheck.js'; document.body.appendChild(ps); const ws=document.createElement('script'); ws.src='workboard.js'; ws.onload=()=>{ const is=document.createElement('script'); is.src='inventory.js'; is.onload=()=>{ const cv=document.createElement('script'); cv.src='catalogview.js'; document.body.appendChild(cv); }; document.body.appendChild(is); }; document.body.appendChild(ws);
       const st=await refreshStatus();
       if(st.configured){ const stale=!st.syncedAt || (Date.now()-new Date(st.syncedAt))>6*3600*1000; if(stale) doSync(true); }   // auto-sync on open if older than 6 hours
     };

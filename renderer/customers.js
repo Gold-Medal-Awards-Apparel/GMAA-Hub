@@ -6,7 +6,7 @@
   const money = n => '$' + Math.round(n).toLocaleString();
   const money2 = n => '$' + (+n).toFixed(2);
   const pct = n => (n * 100).toFixed(1) + '%';
-  let st = { mode: 'org', store: '', seg: '', from: '', fromM: '', to: '', toM: '', q: '', limit: 100, dLimit: {}, sort: 'revenue', dir: -1, sel: null, ov: {} };
+  let st = { mode: 'org', store: '', seg: '', from: '', fromM: '', to: '', toM: '', q: '', limit: 100, dLimit: {}, sort: 'revenue', dir: -1, sel: null, year: '', ov: {} };
   let agg = null, segs = null, built = false;
   const years = [...new Set(D.r.map(r => r[0].slice(0, 4)))].sort();
 
@@ -65,16 +65,18 @@
   function detail(key) {
     const e = agg.list.find(x => x.key === key), el = $('cDetail');
     if (!e) { el.style.display = 'none'; return; }
+    if (st.sel !== key) st.year = '';
     st.sel = key;
     const yrs = [...e.years.entries()].sort(), mx = Math.max(1, ...yrs.map(y => y[1]));
-    const allItems = [...e.items.values()].sort((a, b) => b.revenue - a.revenue), iLim = 12 + (st.dLimit['i' + key] || 0), items = allItems.slice(0, iLim);
+    const yr = e.years.has(st.year) ? st.year : '';   // the year picked in the Revenue by year graph ('' = all years)
+    const allItems = [...e.items.values()].map(i => { if (!yr) return i; const y = i.yr.get(yr); return y ? { item: i.item, qty: y.qty, revenue: y.revenue, prices: y.prices, lastPrice: y.lastPrice } : null; }).filter(Boolean).sort((a, b) => b.revenue - a.revenue), iLim = 12 + (st.dLimit['i' + key] || 0), items = allItems.slice(0, iLim);
     const bar = (id, shown, total) => shown >= total ? '' : '<div style="margin:8px 0"><button class="btn" data-dmore="' + id + '">Show 25 more</button> <button class="btn" data-dall="' + id + '">Show all ' + total + '</button></div>';
-    const allOrds = [...e.orders.values()].sort((a, b) => b.date.localeCompare(a.date)), oLim = 15 + (st.dLimit['o' + key] || 0), ords = allOrds.slice(0, oLim);
+    const allOrds = [...e.orders.values()].filter(o => !yr || o.date.slice(0, 4) === yr).sort((a, b) => b.date.localeCompare(a.date)), oLim = 15 + (st.dLimit['o' + key] || 0), ords = allOrds.slice(0, oLim);
     el.innerHTML = '<button class="btn" data-close="1" style="float:right">Close</button><h2>' + esc(e.name) + '</h2>' +
       '<div class="note">' + (e.subList && e.subList.length > 1 ? 'Includes: ' + esc(e.subList.slice(0, 12).map(s => s.name + ' ' + money(s.revenue)).join('; ')) + (e.subList.length > 12 ? '; +' + (e.subList.length - 12) + ' more' : '') + '<br>' : '') + (e.alsoKnownAs.length ? 'Also entered as: ' + esc(e.alsoKnownAs.slice(0, 6).join('; ')) + '<br>' : '') + (e.contacts.size ? 'Contacts: ' + esc([...e.contacts].slice(0, 6).join(', ')) : '') + '</div>' +
-      '<div class="kpis"><div class="card">Revenue<b>' + money(e.revenue) + '</b></div><div class="card">Rank<b>#' + e.rank + '</b></div><div class="card">Orders<b>' + e.nOrders + '</b></div><div class="card">Customer since<b>' + e.first.slice(0, 4) + '</b></div></div>' +
+      '<div class="kpis"><div class="card">Revenue' + (yr ? ' (' + yr + ')' : '') + '<b>' + money(yr ? e.years.get(yr) : e.revenue) + '</b></div><div class="card">Rank<b>#' + e.rank + '</b></div><div class="card">Orders' + (yr ? ' (' + yr + ')' : '') + '<b>' + (yr ? (e.yearOrders.get(yr) || new Set()).size : e.nOrders) + '</b></div><div class="card">Customer since<b>' + e.first.slice(0, 4) + '</b></div></div>' +
       '<label>Segment <select data-segsel="1">' + L.SEGMENTS.map(s => '<option' + (s === e.segment ? ' selected' : '') + '>' + esc(s) + '</option>').join('') + '</select></label>' +
-      '<h3>Revenue by year</h3><div class="bars" style="margin-bottom:24px">' + yrs.map(y => '<div style="height:' + Math.max(2, y[1] / mx * 100) + '%" title="' + y[0] + ': ' + money(y[1]) + '"><span>' + y[0].slice(2) + '</span></div>').join('') + '</div>' +
+      '<h3>Revenue by year' + (yr ? ' <span class="yrnote">Showing ' + yr + ' only · <a class="yrclear" data-allyears="1">show all years</a></span>' : ' <span class="yrnote">Click a year to see just that year</span>') + '</h3><div class="bars" style="margin-bottom:24px">' + yrs.map(y => '<div class="yb' + (y[0] === yr ? ' sel' : '') + '" data-year="' + y[0] + '" title="' + y[0] + ': ' + money(y[1]) + '"><i class="ylab">' + money(y[1]) + '</i><div class="yfill" style="height:' + Math.max(2, y[1] / mx * 100) + '%"></div><span>' + y[0] + '</span></div>').join('') + '</div>' +
       '<h3>Top items</h3><table><tr><th>Item</th><th class="n">Qty</th><th class="n">Revenue</th><th class="n">Median price</th><th class="n">Last price</th></tr>' +
       items.map(i => '<tr><td>' + esc(i.item) + '</td><td class="n">' + i.qty + '</td><td class="n">' + money(i.revenue) + '</td><td class="n">' + money2(L.median(i.prices)) + '</td><td class="n">' + money2(i.lastPrice) + '</td></tr>').join('') + '</table>' + bar('i' + key, items.length, allItems.length) +
       '<h3>Recent orders</h3><table><tr><th>Date</th><th>Order</th><th class="n">Items total</th></tr>' +
@@ -84,6 +86,8 @@
   function onClick(ev) {
     const t = ev.target;
     if (t.closest('a.ext')) return;   // handled by the global link handler
+    if (t.dataset && t.dataset.allyears) { st.year = ''; if (st.sel) { delete st.dLimit['i' + st.sel]; delete st.dLimit['o' + st.sel]; } if (st.sel) detail(st.sel); return; }
+    const yb = t.closest('.yb[data-year]'); if (yb && st.sel) { st.year = st.year === yb.dataset.year ? '' : yb.dataset.year; delete st.dLimit['i' + st.sel]; delete st.dLimit['o' + st.sel]; detail(st.sel); return; }
     if (t.dataset && t.dataset.close) { st.sel = null; $('cDetail').style.display = 'none'; return; }
     if (t.dataset && t.dataset.more === 'main') { st.limit += 100; render(); return; }
     if (t.dataset && t.dataset.all === 'main') { st.limit = 1e9; render(); return; }

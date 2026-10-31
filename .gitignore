@@ -15,3 +15,9 @@ dist/
 *.log
 data-private/
 inventory-seed.json
+
+# supplier price lists are confidential: never commit
+*price*list*.csv
+*Price*List*.csv
+*Price*List*.xlsx
+*price*list*.xlsx

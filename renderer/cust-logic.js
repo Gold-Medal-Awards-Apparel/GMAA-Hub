@@ -93,7 +93,7 @@
       const name = mode === 'parent' ? parentName(specific) : specific;
       const fk = fold(name); const key = (opts.merges && opts.merges[fk]) || DEFAULT_MERGES[fk] || fk;
       let e = ents.get(key);
-      if (!e) { e = { key, name, cust, co, revenue: 0, lines: 0, orders: new Map(), items: new Map(), years: new Map(), contacts: new Set(), variants: new Map(), subs: new Map(), first: r[0], last: r[0] }; ents.set(key, e); }
+      if (!e) { e = { key, name, cust, co, revenue: 0, lines: 0, orders: new Map(), items: new Map(), years: new Map(), yearOrders: new Map(), contacts: new Set(), variants: new Map(), subs: new Map(), first: r[0], last: r[0] }; ents.set(key, e); }
       if (mode === 'parent') { const sk = fold(specific); const sv = e.subs.get(sk) || { name: specific, revenue: 0 }; sv.revenue += (r[7] > 0 ? r[7] : 0); e.subs.set(sk, sv); }
       e.variants.set(name, (e.variants.get(name) || 0) + (r[7] > 0 ? r[7] : 0) + 0.001);
       const amt = r[7] > 0 ? r[7] : 0;
@@ -104,10 +104,13 @@
       let o = e.orders.get(ok); if (!o) { o = { id: ok, num: r[1], src: r[10] === 1 ? 'new' : 'old', date: r[0], total: 0, lines: 0, oid: r[11] || '', cid: r[12] || '' }; e.orders.set(ok, o); }
       o.total += amt; o.lines++;
       const y = r[0].slice(0, 4); e.years.set(y, (e.years.get(y) || 0) + amt);
+      let yo = e.yearOrders.get(y); if (!yo) { yo = new Set(); e.yearOrders.set(y, yo); } yo.add(ok);
       if (r[4]) {
         const ik = clean(r[4]); let it = e.items.get(ik);
-        if (!it) { it = { item: r[4], qty: 0, revenue: 0, prices: [], orders: new Set(), last: r[0], lastPrice: r[6] }; e.items.set(ik, it); }
+        if (!it) { it = { item: r[4], qty: 0, revenue: 0, prices: [], orders: new Set(), last: r[0], lastPrice: r[6], yr: new Map() }; e.items.set(ik, it); }
         it.qty += r[5]; it.revenue += amt; if (r[6] > 0) it.prices.push(r[6]); it.orders.add(ok); if (r[0] >= it.last) { it.last = r[0]; it.lastPrice = r[6]; }
+        let iy = it.yr.get(y); if (!iy) { iy = { qty: 0, revenue: 0, prices: [], last: r[0], lastPrice: r[6] }; it.yr.set(y, iy); }
+        iy.qty += r[5]; iy.revenue += amt; if (r[6] > 0) iy.prices.push(r[6]); if (r[0] >= iy.last) { iy.last = r[0]; iy.lastPrice = r[6]; }
       }
     }
     const list = [];

@@ -479,9 +479,9 @@
   async function show(which) {
     if (st.tab === 'updates' && which !== 'updates') markUpdatesRead();
     st.tab = which; if (st.tv) exitTv();
-    ['main', '#custView', '#priceView', '#invView'].forEach(sel => { const el = document.querySelector(sel); if (el) el.style.display = 'none'; });
+    ['main', '#custView', '#priceView', '#invView', '#catView'].forEach(sel => { const el = document.querySelector(sel); if (el) el.style.display = 'none'; });
     vB.style.display = which === 'board' ? 'block' : 'none'; vN.style.display = which === 'notes' ? 'block' : 'none'; vU.style.display = which === 'updates' ? 'block' : 'none';
-    ['tabSearch', 'tabCust', 'tabPrice', 'tabInv'].forEach(i => $(i) && $(i).classList.remove('on'));
+    ['tabSearch', 'tabCust', 'tabPrice', 'tabInv', 'tabCat'].forEach(i => $(i) && $(i).classList.remove('on'));
     $('tabBoard').classList.toggle('on', which === 'board'); $('tabNotes').classList.toggle('on', which === 'notes'); $('tabUpdates').classList.toggle('on', which === 'updates');
     await draw(); if ((await window.api.cloudStatus()).configured) pull();
   }

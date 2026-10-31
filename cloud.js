@@ -19,6 +19,8 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS inv_items (id TEXT PRIMARY KEY, code TEXT NOT NULL, vendor TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', category TEXT NOT NULL DEFAULT '', min_qty INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL DEFAULT '')",
   "CREATE TABLE IF NOT EXISTS inv_stock (id TEXT PRIMARY KEY, item_id TEXT NOT NULL, label TEXT NOT NULL DEFAULT '', qty INTEGER NOT NULL DEFAULT 0, cost REAL NOT NULL DEFAULT 0, location TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '', flag TEXT NOT NULL DEFAULT '', deleted INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL DEFAULT '')",
   "CREATE TABLE IF NOT EXISTS inv_moves (id TEXT PRIMARY KEY, at TEXT NOT NULL, by TEXT NOT NULL DEFAULT '', item_id TEXT NOT NULL DEFAULT '', stock_id TEXT NOT NULL DEFAULT '', code TEXT NOT NULL DEFAULT '', label TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT '', delta INTEGER NOT NULL DEFAULT 0, qty_after INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '')",
+  "CREATE TABLE IF NOT EXISTS cat_suppliers (name TEXT PRIMARY KEY COLLATE NOCASE, list_date TEXT NOT NULL DEFAULT '', labels TEXT NOT NULL DEFAULT '[]', n INTEGER NOT NULL DEFAULT 0, gen INTEGER NOT NULL DEFAULT 0, file_name TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '', updated_by TEXT NOT NULL DEFAULT '')",
+  "CREATE TABLE IF NOT EXISTS cat_chunks (supplier TEXT NOT NULL COLLATE NOCASE, gen INTEGER NOT NULL, idx INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY (supplier, gen, idx))",
   "CREATE INDEX IF NOT EXISTS idx_inv_items_code ON inv_items(code)",
   "CREATE INDEX IF NOT EXISTS idx_inv_stock_item ON inv_stock(item_id)",
   "CREATE INDEX IF NOT EXISTS idx_inv_moves_at ON inv_moves(at)",
@@ -408,6 +410,7 @@ function makeCloud({ dir, safeStorage, baseUrl }) {
     return { ok: true };
   }
   function status() { const c = loadCreds(); return { configured: !!c, accountId: c ? c.accountId : '', databaseId: c ? c.databaseId : '' }; }
-  return { loadCreds, saveCreds, clearCreds, test, pull, cached, authState, login, logout, ping, addStaff, setPin, removeStaff, setAdmin, updates, saveNote, deleteNote, saveJob, moveSection, setAssign, deleteJob, archiveJob, addJobNote, saveSetting, status, query, invPull, invMove, invSaveItem, invSaveStock, invDelete, invMoves, invImport };
+  const catalog = require('./catalog.js').makeCatalog({ need, ensure, query, actor, newId, str, dir });
+  return { catalog, loadCreds, saveCreds, clearCreds, test, pull, cached, authState, login, logout, ping, addStaff, setPin, removeStaff, setAdmin, updates, saveNote, deleteNote, saveJob, moveSection, setAssign, deleteJob, archiveJob, addJobNote, saveSetting, status, query, invPull, invMove, invSaveItem, invSaveStock, invDelete, invMoves, invImport };
 }
 module.exports = { makeCloud, STATUSES, SECTIONS };

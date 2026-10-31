@@ -90,6 +90,16 @@ ipcMain.handle('inv:saveStock', cloudWrap(l => cl().invSaveStock(l)));
 ipcMain.handle('inv:delete', cloudWrap((k, id) => cl().invDelete(k, id)));
 ipcMain.handle('inv:moves', cloudWrap((n, id) => cl().invMoves(n, id)));
 ipcMain.handle('inv:import', cloudWrap(async () => { let seed; for (const d of [DATA_DIR(), __dirname]) { try { seed = JSON.parse(fs.readFileSync(path.join(d, 'inventory-seed.json'), 'utf8')); break; } catch (e) {} } if (!seed) return { error: 'The starter list file (inventory-seed.json) was not found. Put it in the app folder or in ' + DATA_DIR() + ' and try again.' }; return cl().invImport(seed); }));
+ipcMain.handle('cat:status', cloudWrap(() => cl().catalog.status()));
+ipcMain.handle('cat:search', cloudWrap(o => cl().catalog.search(o)));
+ipcMain.handle('cat:pick', cloudWrap(async () => {
+  await cl().catalog.guard();   // admins only; checked before the file window opens
+  const r = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow(), { title: 'Choose a supplier price list', properties: ['openFile'], filters: [{ name: 'Price lists (.csv, .xlsx)', extensions: ['csv', 'xlsx'] }] });
+  if (r.canceled || !r.filePaths.length) return { canceled: true };
+  return cl().catalog.pick(r.filePaths[0]);
+}));
+ipcMain.handle('cat:import', cloudWrap((tok, m) => cl().catalog.importPending(tok, m, (done, total) => { try { if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('cat:progress', { done, total }); } catch (e) {} })));
+ipcMain.handle('cat:remove', cloudWrap(n => cl().catalog.remove(n)));
 ipcMain.handle('auth:state', cloudWrap(() => cl().authState()));
 ipcMain.handle('auth:login', cloudWrap((n, p) => cl().login(p === undefined ? n : p)));
 ipcMain.handle('auth:logout', () => cl().logout());
