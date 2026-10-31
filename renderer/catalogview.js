@@ -26,7 +26,7 @@
   }
   function priceCell(r) {
     const l = r.labels || [], lines = [];
-    (r.prices || []).forEach((p, i) => { if (p != null) lines.push('<div class="cp"><span>' + esc(l[i] || 'Price') + '</span><b>' + m2(p) + '</b></div>'); });
+    (r.prices || []).forEach((p, i) => { if (p != null) lines.push('<div class="cp"><span>' + esc(l[i] || 'Price') + (r.brks && r.brks[i] ? ' (' + r.brks[i] + '+)' : '') + '</span><b>' + m2(p) + '</b></div>'); });
     return lines.length ? lines.join('') : '<span class="muted">No price listed</span>';
   }
   function whenCell(r) {
@@ -94,7 +94,7 @@
   }
   function readMap() {
     const g = id => { const e = $(id); return e ? parseInt(e.value, 10) : -1; }, prices = [];
-    for (let i = 0; i < 6; i++) { const c = $('cmPc' + i); if (c && parseInt(c.value, 10) >= 0) prices.push({ label: ($('cmPl' + i).value || '').trim(), col: parseInt(c.value, 10) }); }
+    for (let i = 0; i < 6; i++) { const c = $('cmPc' + i); if (c && parseInt(c.value, 10) >= 0) { const col = parseInt(c.value, 10), old = ((S.imp && S.imp.mapping.prices) || []).find(x => x.col === col); prices.push({ label: ($('cmPl' + i).value || '').trim(), col, brk: old && old.brk != null ? old.brk : -1 }); } }
     return { supplier: $('cmName').value.trim(), listDate: $('cmDate').value, sku: g('cmSku'), desc: g('cmDesc'), size: g('cmSize'), pack: g('cmPack'), page: g('cmPage'), catalog: g('cmCat'), prev: g('cmPrev'), change: g('cmChg'), prices };
   }
   function mapPreview() {

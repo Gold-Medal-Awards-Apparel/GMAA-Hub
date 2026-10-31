@@ -118,6 +118,11 @@ function detect(headers, fileName) {
     return { known: 'PDU', mapping: M({ supplier: 'PDU', sku: hs.indexOf('part#'), desc: hs.indexOf('description'), size: hs.indexOf('size'), pack: hs.indexOf('std pk'), page: hs.indexOf('page'),
       prices: [['Less than case', 'less case'], ['1 case', '1 case'], ['5 cases', '5 case'], ['Buyers Club', 'buyers club']].map(([label, h]) => ({ label, col: hs.indexOf(h) })).filter(p => p.col >= 0) }) };
   }
+  if (hs.includes('product') && hs.includes('description') && hs.includes('price 1') && hs.includes('qty brk')) {
+    const pcs = [], qb = []; hs.forEach((h, i) => { if (/^qty brk$/.test(h)) qb.push(i); });
+    ['price 1', 'price 2', 'price 3', 'price 4'].forEach((h, k) => { const col = hs.indexOf(h); if (col >= 0) pcs.push({ label: 'Price ' + (k + 1), col, brk: k > 0 && qb[k - 1] != null ? qb[k - 1] : -1 }); });
+    return { known: 'Marco', mapping: M({ supplier: 'Marco', sku: hs.indexOf('product'), desc: hs.indexOf('description'), size: hs.indexOf('description 2'), page: hs.indexOf('page'), prices: pcs }) };
+  }
   const pr = []; headers.forEach((h, i) => { if (/price|cost|each|case|break|club|net|list/i.test(h) && !/previous|prev|date|qty|quantity|pk|pack|page/i.test(h)) pr.push({ label: norm(h), col: i }); });
   return { known: '', mapping: M({ sku: find(hs, 'sku', 'part#', 'part #', 'part number', 'item number', 'item #', 'item', 'style', 'code', 'number'), desc: find(hs, 'description', 'name', 'title', 'product', 'item name'), size: find(hs, 'size'),
     pack: find(hs, 'case qty', 'std pk', 'pack', 'pack qty', 'case', 'qty'), page: find(hs, 'page', 'pages'), catalog: find(hs, 'catalog'), prev: find(hs, 'previous price'), change: find(hs, 'last price change date', 'price change date'), prices: pr.slice(0, 6) }) };
@@ -129,7 +134,7 @@ function buildRecords(rows, m) {
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i], sku = norm(cell(r, m.sku)), desc = norm(cell(r, m.desc)); if (!sku && !desc) continue;
     const page = norm(cell(r, m.page)).replace(/\.0+$/, ''), pk = toNum(cell(r, m.pack));
-    out.push([sku, desc, norm(cell(r, m.size)), pk ? Math.round(pk) : null, page && page !== '0' ? page : '', norm(cell(r, m.catalog)).replace(/^0$/, ''), m.prices.map(p => toNum(cell(r, p.col))), toNum(cell(r, m.prev)), toDate(cell(r, m.change))]);
+    out.push([sku, desc, norm(cell(r, m.size)), pk ? Math.round(pk) : null, page && page !== '0' ? page : '', norm(cell(r, m.catalog)).replace(/^0$/, ''), m.prices.map(p => toNum(cell(r, p.col))), toNum(cell(r, m.prev)), toDate(cell(r, m.change))].concat(m.prices.some(p => p.brk >= 0) ? [m.prices.map(p => p.brk >= 0 ? toNum(cell(r, p.brk)) : null)] : []));
   }
   return out;
 }
@@ -221,15 +226,17 @@ function makeCatalog(ctx) {
     let all = [];
     for (const s of mem.values()) { if (only && s.meta.name.toLowerCase() !== only) continue; for (const h of searchIn(s, q)) all.push([h[0], s, h[1]]); }
     all.sort((a, b) => b[0] - a[0] || (a[1].meta.name < b[1].meta.name ? -1 : 1) || a[2] - b[2]);
-    const rows = all.slice(0, limit).map(([, s, i]) => { const r = s.records[i]; return { sku: r[0], supplier: s.meta.name, desc: r[1], size: r[2], pack: r[3], page: r[4], catalog: r[5], prices: r[6], prev: r[7], change: r[8], labels: s.meta.labels, listDate: s.meta.list_date }; });
+    const rows = all.slice(0, limit).map(([, s, i]) => { const r = s.records[i]; return { sku: r[0], supplier: s.meta.name, desc: r[1], size: r[2], pack: r[3], page: r[4], catalog: r[5], prices: r[6], prev: r[7], change: r[8], brks: r[9] || null, labels: s.meta.labels, listDate: s.meta.list_date }; });
     return { total: all.length, rows };
   }
 
   // ---- importing (admin) ----
   async function pick(file) {
-    const rows = readTable(file); if (rows.length < 2) return { error: 'That file has no rows to import.' };
+    let rows = readTable(file); if (rows.length < 2) return { error: 'That file has no rows to import.' };
+    let titleDate = ''; const hi = rows.slice(0, 10).findIndex(r => r.filter(c => norm(c) !== '').length >= 4);   // skip a title line above the headings
+    if (hi > 0) { titleDate = toDate(((/\d{1,2}\/\d{1,2}\/\d{2,4}/.exec(rows.slice(0, hi).map(r => r.join(' ')).join(' ')) || [''])[0])); rows = rows.slice(hi); }
     const headers = rows[0].map(norm), name = path.basename(file); const d = detect(headers, name);
-    const token = newId(); pending = { token, rows, name };
+    const token = newId(); pending = { token, rows, name }; if (!d.mapping.listDate && titleDate) d.mapping.listDate = titleDate;
     if (!d.mapping.supplier) d.mapping.supplier = name.replace(/\.[^.]+$/, '').replace(/[-_ ]*\d{1,4}[-_.]\d{1,2}[-_.]\d{1,4}[-_ ]*/g, ' ').replace(/[_]+/g, ' ').trim().slice(0, 40);
     return { token, fileName: name, count: rows.length - 1, headers, sample: rows.slice(1, 5).map(r => headers.map((h, i) => r[i] == null ? '' : r[i])), known: d.known, mapping: d.mapping };
   }
@@ -240,7 +247,7 @@ function makeCatalog(ctx) {
     if (!name) return { error: 'Type the supplier name (for example JDS).' };
     if (!(m.sku >= 0)) return { error: 'Pick which column holds the product number (SKU).' };
     if (!(m.desc >= 0)) return { error: 'Pick which column holds the description.' };
-    const prices = (m.prices || []).filter(p => p && p.col >= 0).slice(0, 6).map(p => ({ label: str(p.label, 30).trim() || 'Price', col: p.col }));
+    const prices = (m.prices || []).filter(p => p && p.col >= 0).slice(0, 6).map(p => ({ label: str(p.label, 30).trim() || 'Price', col: p.col, brk: p.brk >= 0 ? p.brk : -1 }));
     if (!prices.length) return { error: 'Pick at least one price column.' };
     const mm = { sku: m.sku, desc: m.desc, size: m.size >= 0 ? m.size : -1, pack: m.pack >= 0 ? m.pack : -1, page: m.page >= 0 ? m.page : -1, catalog: m.catalog >= 0 ? m.catalog : -1, prev: m.prev >= 0 ? m.prev : -1, change: m.change >= 0 ? m.change : -1, prices };
     const recs = buildRecords(pending.rows, mm); if (!recs.length) return { error: 'No products were found with those columns. Check the matching.' };
