@@ -52,7 +52,8 @@ function makeSync({ dir, safeStorage, baseUrl }) {
   async function getToken(c) {
     const r = await fetch(base(c.shop) + '/admin/oauth/access_token', {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'client_credentials', client_id: c.clientId, client_secret: c.clientSecret })
+      body: new URLSearchParams({ grant_type: 'client_credentials', client_id: c.clientId, client_secret: c.clientSecret }),
+      signal: AbortSignal.timeout(30000)   // a stalled connection must fail, not hang the Sync button forever
     });
     const t = await r.text(); let j; try { j = JSON.parse(t); } catch (e) {}
     if (!r.ok || !j || !j.access_token) {
@@ -72,7 +73,8 @@ function makeSync({ dir, safeStorage, baseUrl }) {
     for (let attempt = 0; attempt < 6; attempt++) {
       const r = await fetch(base(c.shop) + '/admin/api/' + API_VERSION + '/graphql.json', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': token },
-        body: JSON.stringify({ query: query || QUERY, variables })
+        body: JSON.stringify({ query: query || QUERY, variables }),
+        signal: AbortSignal.timeout(45000)
       });
       if (r.status === 429 || r.status >= 500) { await new Promise(s => setTimeout(s, 1500 * (attempt + 1))); continue; }
       const j = await r.json().catch(() => null);

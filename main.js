@@ -131,16 +131,16 @@ ipcMain.handle('shopify:save', async (e, f) => {
 });
 ipcMain.handle('shopify:sync', async () => {
   try { const r = await sy().sync(); return Object.assign({ ok: true }, r); }
-  catch (err) { const offline = /fetch failed|ENOTFOUND|ECONN|ETIMEDOUT|network/i.test(String(err && (err.message + (err.cause && err.cause.code || '')))); return { error: offline ? 'Could not reach Shopify. The computer may be offline. Your saved orders are still searchable.' : err.message, offline }; }
+  catch (err) { const offline = /fetch failed|ENOTFOUND|ECONN|ETIMEDOUT|network|timeout|aborted/i.test(String(err && ((err.name || '') + ' ' + err.message + (err.cause && err.cause.code || '')))); return { error: offline ? 'Could not reach Shopify. The computer may be offline. Your saved orders are still searchable.' : err.message, offline }; }
 });
 ipcMain.handle('shopify:order', async (e, num) => {
   try { return Object.assign({ ok: true }, await sy().lookupOrder(num)); }
-  catch (err) { const offline = /fetch failed|ENOTFOUND|ECONN|ETIMEDOUT|network/i.test(String(err && (err.message + (err.cause && err.cause.code || '')))); return { error: offline ? 'Could not reach Shopify. The computer may be offline.' : err.message, offline }; }
+  catch (err) { const offline = /fetch failed|ENOTFOUND|ECONN|ETIMEDOUT|network|timeout|aborted/i.test(String(err && ((err.name || '') + ' ' + err.message + (err.cause && err.cause.code || '')))); return { error: offline ? 'Could not reach Shopify. The computer may be offline.' : err.message, offline }; }
 });
 ipcMain.handle('products:get', () => sy().loadProducts());
 ipcMain.handle('products:sync', async () => {
   try { const r = await sy().syncProducts(); return Object.assign({ ok: true }, r, { data: sy().loadProducts() }); }
-  catch (err) { const offline = /fetch failed|ENOTFOUND|ECONN|ETIMEDOUT|network/i.test(String(err && (err.message + (err.cause && err.cause.code || '')))); return { error: offline ? 'Could not reach Shopify. The computer may be offline.' : err.message, offline }; }
+  catch (err) { const offline = /fetch failed|ENOTFOUND|ECONN|ETIMEDOUT|network|timeout|aborted/i.test(String(err && ((err.name || '') + ' ' + err.message + (err.cause && err.cause.code || '')))); return { error: offline ? 'Could not reach Shopify. The computer may be offline.' : err.message, offline }; }
 });
 ipcMain.handle('shopify:disconnect', () => { sy().clearCreds(); return { ok: true }; });
 ipcMain.handle('open:external', (e, url) => {

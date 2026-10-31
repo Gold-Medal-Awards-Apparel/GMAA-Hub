@@ -27,7 +27,7 @@
 
   async function doSync(auto){
     if(syncing) return; syncing=true; $('syncBtn').disabled=true; $('syncBtn').textContent='Syncing…';
-    const r=await window.api.shopifySync();
+    let r; try{ r=await Promise.race([window.api.shopifySync(), new Promise(res=>setTimeout(()=>res({error:'Shopify is not answering. Check the internet connection and try again.',offline:true}),120000))]); }catch(e){ r={error:'Sync failed: '+(e&&e.message||e)}; }
     syncing=false; $('syncBtn').disabled=false; $('syncBtn').textContent='Sync new orders';
     await refreshStatus();
     if(r.error){ if(!(auto&&r.offline)) say(r.error); return; }
