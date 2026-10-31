@@ -219,14 +219,21 @@ function makeCatalog(ctx) {
     try { if (Date.now() - lastSync > 60000 || !mem.size) await sync(false); } catch (e) { if (e.locked) throw e; offline = !!e.offline; err = e.message; }
     return { suppliers: [...mem.values()].map(s => metaOut(s.meta)), offline, error: mem.size ? '' : err };
   }
+  const toRow = (s, r) => ({ sku: r[0], supplier: s.meta.name, desc: r[1], size: r[2], pack: r[3], page: r[4], catalog: r[5], prices: r[6], prev: r[7], change: r[8], brks: r[9] || null, labels: s.meta.labels, listDate: s.meta.list_date });
   async function search(opts) {
     const c = need(); await ensure(c); await actor(c);
     loadMem(); const q = String((opts && opts.q) || '').trim(), only = String((opts && opts.supplier) || '').toLowerCase(), limit = Math.max(1, Math.min(1000, +(opts && opts.limit) || 100));
+    if (!q && opts && opts.recent) {   // nothing typed: the latest price changes on file, newest first (fills the Catalog page)
+      const only2 = only, list = [];
+      for (const s of mem.values()) { if (only2 && s.meta.name.toLowerCase() !== only2) continue; for (const r of s.records) { const p0 = r[6].find(x => x != null); if (r[8] && r[7] != null && p0 != null && Math.abs(p0 - r[7]) > 0.004) list.push([r[8], Math.abs(p0 - r[7]) / r[7], s, r]); } }
+      list.sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0) || b[1] - a[1]);
+      return { total: list.length, rows: list.slice(0, limit).map(x => toRow(x[2], x[3])), recent: true };
+    }
     if (!q) return { total: 0, rows: [] };
     let all = [];
     for (const s of mem.values()) { if (only && s.meta.name.toLowerCase() !== only) continue; for (const h of searchIn(s, q)) all.push([h[0], s, h[1]]); }
     all.sort((a, b) => b[0] - a[0] || (a[1].meta.name < b[1].meta.name ? -1 : 1) || a[2] - b[2]);
-    const rows = all.slice(0, limit).map(([, s, i]) => { const r = s.records[i]; return { sku: r[0], supplier: s.meta.name, desc: r[1], size: r[2], pack: r[3], page: r[4], catalog: r[5], prices: r[6], prev: r[7], change: r[8], brks: r[9] || null, labels: s.meta.labels, listDate: s.meta.list_date }; });
+    const rows = all.slice(0, limit).map(([, s, i]) => toRow(s, s.records[i]));
     return { total: all.length, rows };
   }
 

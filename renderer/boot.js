@@ -58,6 +58,18 @@
   $('shDisc').addEventListener('click',async()=>{ await window.api.shopifyDisconnect(); await refreshStatus(); $('shMsg').textContent='Disconnected. Orders already downloaded stay searchable.'; });
   $('shopModal').addEventListener('click',e=>{ if(e.target===$('shopModal')) $('shopModal').classList.remove('on'); });
   $('syncBtn').addEventListener('click',()=>doSync(false));
+  // ---- Check for updates ----
+  let updating=false;
+  $('updBtn').addEventListener('click',async()=>{
+    if(updating||$('updBtn').classList.contains('primary')) return; updating=true; const b=$('updBtn'); b.disabled=true; b.textContent='Checking…';
+    let r; try{ r=await window.api.updateCheck(); }catch(e){ r={state:'offline-or-error'}; }
+    updating=false; b.disabled=false; b.textContent='Check for updates';
+    if(r.state==='current') say('You are up to date (v'+r.current+').');
+    else if(r.state==='dev') say('Updates only work in the installed copy of the app (v'+r.current+').');
+    else if(r.state==='ready'){ say('Version '+r.version+' is downloaded.'); b.textContent='Restart to update to '+r.version; b.classList.add('primary'); b.onclick=()=>{ window.api.updateInstall(); }; }
+    else if(r.state==='downloading') say('Version '+r.version+' is still downloading. Click again in a minute.');
+    else say('Could not check for updates. The computer may be offline. You are on v'+r.current+'.');
+  });
 
   // ---- shared database connection window ----
   async function openCloud(){

@@ -4,7 +4,7 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const m2 = n => '$' + (+n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const view = $('catView'), gm = window.__gm || {};
-  const S = { suppliers: [], q: '', sup: '', limit: 100, rows: [], total: 0, err: '', offline: false, ready: false, locked: false, busy: false, imp: null, seq: 0 };
+  const S = { suppliers: [], q: '', sup: '', limit: 100, rows: [], recent: [], total: 0, err: '', offline: false, ready: false, locked: false, busy: false, imp: null, seq: 0 };
   const isAdmin = () => { const a = gm.auth ? gm.auth() : {}; return !!(a && (a.admin || a.bootstrap || !a.required)); };
   const num = v => { if (typeof v === 'number') return v > 0 ? v : null; const s = String(v == null ? '' : v).replace(/[$,\s]/g, ''); return /^-?\d*\.?\d+$/.test(s) && parseFloat(s) > 0 ? parseFloat(s) : null; };
 
@@ -38,15 +38,26 @@
     }
     return h;
   }
+  function tableHtml(rows) {
+    return '<table class="res"><tr><th>SKU</th><th>Supplier</th><th>Description</th><th>Size</th><th class="n">Case / pack</th><th>Prices</th><th>Catalog &amp; page</th><th>Price list</th></tr>' +
+      rows.map(r => '<tr><td class="sku"><b>' + esc(r.sku) + '</b></td><td>' + esc(r.supplier) + '</td><td>' + esc(r.desc) + (/coming soon/i.test(r.catalog) ? ' <span class="soon">coming soon</span>' : '') + '</td><td>' + esc(r.size) + '</td><td class="n">' + (r.pack ? r.pack : '') + '</td><td class="pr">' + priceCell(r) + '</td><td>' + (/coming soon/i.test(r.catalog) ? '' : esc(r.catalog)) + (r.page ? (r.catalog && !/coming soon/i.test(r.catalog) ? ', ' : '') + 'page ' + esc(r.page) : '') + '</td><td>' + whenCell(r) + '</td></tr>').join('') + '</table>';
+  }
   function paintOut() {
     const out = $('catOut'); if (!out) return;
     if (S.locked) { out.innerHTML = '<div class="card">Wholesale prices need a PIN sign-in.<br><br><button class="btn primary" data-a="signin">Sign in with PIN</button></div>'; return; }
     if (S.err) { out.innerHTML = '<div class="card" style="background:var(--warn)">' + esc(S.err) + '</div>'; return; }
-    if (!S.q.trim()) { out.innerHTML = S.ready && S.suppliers.length ? '<div class="note">Search by product number (SKU) or by words in the description. Every supplier is searched at once, and the supplier is shown on each line.</div>' : ''; return; }
+    if (!S.q.trim()) {
+      const intro = S.ready && S.suppliers.length ? '<div class="note">Search by product number (SKU) or by words in the description. Every supplier is searched at once, and the supplier is shown on each line.</div>' : '';
+      out.innerHTML = intro + (S.recent.length ? '<h3 style="margin:14px 0 4px">Latest price changes on file</h3><div class="note" style="margin-top:0">Newest first, from every supplier that lists the date of its last change. Type above to search the whole catalog.</div>' + tableHtml(S.recent) : '');
+      return;
+    }
     if (!S.rows.length) { out.innerHTML = '<div class="card">Nothing matches "' + esc(S.q) + '". Try fewer words, or part of the product number.</div>'; return; }
-    out.innerHTML = '<table class="res"><tr><th>SKU</th><th>Supplier</th><th>Description</th><th>Size</th><th class="n">Case / pack</th><th>Prices</th><th>Catalog &amp; page</th><th>Price list</th></tr>' +
-      S.rows.map(r => '<tr><td class="sku"><b>' + esc(r.sku) + '</b></td><td>' + esc(r.supplier) + '</td><td>' + esc(r.desc) + (/coming soon/i.test(r.catalog) ? ' <span class="soon">coming soon</span>' : '') + '</td><td>' + esc(r.size) + '</td><td class="n">' + (r.pack ? r.pack : '') + '</td><td class="pr">' + priceCell(r) + '</td><td>' + (/coming soon/i.test(r.catalog) ? '' : esc(r.catalog)) + (r.page ? (r.catalog && !/coming soon/i.test(r.catalog) ? ', ' : '') + 'page ' + esc(r.page) : '') + '</td><td>' + whenCell(r) + '</td></tr>').join('') + '</table>' +
+    out.innerHTML = tableHtml(S.rows) +
       '<div class="note">' + (S.total > S.rows.length ? 'Showing ' + S.rows.length.toLocaleString() + ' of ' + S.total.toLocaleString() + ' matches. <button class="btn" data-a="more">Show 100 more</button>' : S.total.toLocaleString() + ' match' + (S.total === 1 ? '' : 'es') + '.') + '</div>';
+  }
+  async function loadRecent() {
+    const r = await gm.write(() => window.api.catSearch({ recent: true, limit: 75 }), null);
+    if (r && !r.error && r.rows) { S.recent = r.rows; if (!S.q.trim()) paintOut(); }
   }
   async function search(keepLimit) {
     if (!keepLimit) S.limit = 100;
@@ -130,7 +141,7 @@
       const r = await gm.write(() => window.api.catImport(p.token, m), null);
       if (!r) { t.disabled = false; msg.textContent = 'Not imported (sign-in was cancelled).'; return; }
       if (r.error) { t.disabled = false; msg.textContent = r.error.replace(/^LOCKED: /, ''); return; }
-      await refresh(); manage('Imported ' + r.count.toLocaleString() + ' ' + r.name + ' items.'); if (S.q.trim()) search(true); return;
+      await refresh(); manage('Imported ' + r.count.toLocaleString() + ' ' + r.name + ' items.'); if (S.q.trim()) search(true); else loadRecent(); return;
     }
   }
   async function refresh() {
@@ -159,7 +170,7 @@
     if (!r) { S.locked = true; S.ready = true; paintTop(); paintOut(); return; }
     if (r.error && !r.suppliers) { S.err = r.error.replace(/^LOCKED: /, ''); S.ready = true; paintTop(); paintOut(); return; }
     S.locked = false; S.err = r.error || ''; S.suppliers = r.suppliers; S.offline = r.offline; S.ready = true; paintTop(); paintOut();
-    const q = $('catQ'); if (q) q.focus(); if (S.q.trim()) search(true);
+    const q = $('catQ'); if (q) q.focus(); if (S.q.trim()) search(true); else loadRecent();
   }
   const prevHide = window.__hideWork;
   window.__hideWork = () => { if (prevHide) prevHide(); if (view.style.display !== 'none') view.style.display = 'none'; $('tabCat').classList.remove('on'); closeModal(); };

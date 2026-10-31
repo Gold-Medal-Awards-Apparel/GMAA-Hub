@@ -89,6 +89,7 @@
       const ys = [...byYear.keys()].sort();
       html += '<h3>Median price by year</h3><table><tr><th>Year</th>' + ys.map(y => '<th class="n">' + y + '</th>').join('') + '</tr><tr><td>Median each</td>' + ys.map(y => '<td class="n">' + m2(med(byYear.get(y))) + '</td>').join('') + '</tr><tr><td>Times sold</td>' + ys.map(y => '<td class="n">' + byYear.get(y).length + '</td>').join('') + '</tr></table>';
     }
+    if (matched.length) html += '<div id="pCost"></div>';
     if (products.products.length) {
       html += '<h3>In the store now (' + matched.length + ' product' + (matched.length === 1 ? '' : 's') + ')</h3>';
       if (matched.length) {
@@ -98,7 +99,28 @@
     out.innerHTML = html;
     cur = { items: [...items.values()].map(it => ({ it, orders: it.orders.size, low: Math.min(...it.prices), med: med(it.prices), high: Math.max(...it.prices) })), matched };
     ps.iLimit = 25; ps.pLimit = 40;
-    drawItems(); drawProds();
+    drawItems(); drawProds(); fillCost(matched);
+  }
+  // What the supplier charges for the same SKU (from the Catalog price lists), shown beside the store price.
+  let costSeq = 0;
+  async function fillCost(matched) {
+    const mine = ++costSeq, el = $('pCost'); if (!el || !window.api.catSearch) return;
+    const want = [], seen = new Set();
+    matched.forEach(pr => pr.variants.forEach(v => { const k = String(v.sku || '').toLowerCase().replace(/[^a-z0-9]/g, ''); if (k && !seen.has(k) && want.length < 30) { seen.add(k); want.push({ pr, v, k }); } }));
+    if (!want.length) return;
+    const rowsOut = []; let locked = false;
+    for (const w of want) {
+      let r; try { r = await window.api.catSearch({ q: w.v.sku, limit: 6 }); } catch (e) { return; }
+      if (mine !== costSeq) return;
+      if (!r || r.error) { if (r && /LOCKED/.test(r.error || '')) locked = true; if (locked) break; continue; }
+      (r.rows || []).filter(x => String(x.sku).toLowerCase().replace(/[^a-z0-9]/g, '') === w.k).forEach(x => rowsOut.push({ w, x }));
+    }
+    if (mine !== costSeq || !$('pCost')) return;
+    if (locked) { $('pCost').innerHTML = '<div class="note">Supplier cost is available after a PIN sign-in (open the Catalog tab and sign in).</div>'; return; }
+    if (!rowsOut.length) return;
+    const lines = x => (x.prices || []).map((p, i) => p != null ? '<div style="display:flex;gap:10px;justify-content:space-between"><span style="color:var(--muted)">' + esc((x.labels || [])[i] || 'Price') + (x.brks && x.brks[i] ? ' (' + x.brks[i] + '+)' : '') + '</span><b>' + m2(p) + '</b></div>' : '').join('') || '<span style="color:var(--muted)">No price listed</span>';
+    $('pCost').innerHTML = '<h3>What the supplier charges for these (' + rowsOut.length + ')</h3><table><tr><th>Store product</th><th>SKU</th><th>Supplier</th><th>Supplier price list</th><th class="n">Store price</th></tr>' +
+      rowsOut.slice(0, 40).map(({ w, x }) => '<tr><td>' + esc(w.pr.title) + (w.v.title ? ' <span style="color:var(--muted)">' + esc(w.v.title) + '</span>' : '') + '</td><td>' + esc(w.v.sku) + '</td><td>' + esc(x.supplier) + '</td><td style="white-space:nowrap">' + lines(x) + '<div style="color:var(--muted);font-size:12px">list ' + esc(x.listDate || 'date not set') + '</div></td><td class="n">' + m2(w.v.price) + '</td></tr>').join('') + '</table>';
   }
   const ps = { iSort: 'last', iDir: -1, iLimit: 25, pSort: '', pDir: 1, pLimit: 40 };
   let cur = { items: [], matched: [] };

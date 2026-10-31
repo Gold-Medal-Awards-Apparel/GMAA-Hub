@@ -149,17 +149,18 @@ ipcMain.handle('open:external', (e, url) => {
 });
 
 // ---- Automatic updates (installed copies only; checks GitHub Releases when online) ----
-let updateInfo = { state: 'idle' };
+let updateInfo = { state: 'idle' }, theUpdater = null, manualCheck = false;
 function setupUpdates(getWin) {
   if (!app.isPackaged) return null;          // never runs from the dev folder
   let autoUpdater;
   try { ({ autoUpdater } = require('electron-updater')); } catch (e) { return null; }
   autoUpdater.autoDownload = true;
+  theUpdater = autoUpdater;
   autoUpdater.autoInstallOnAppQuit = true;   // installs the downloaded update when the app is closed
   autoUpdater.on('update-available', i => { updateInfo = { state: 'downloading', version: i.version }; });
   autoUpdater.on('update-downloaded', i => {
     updateInfo = { state: 'ready', version: i.version };
-    const w = getWin();
+    const w = getWin(); if (manualCheck) return;   // the Check for updates button shows its own Restart button
     dialog.showMessageBox(w, { type: 'info', buttons: ['Restart now', 'Later'], defaultId: 1,
       title: 'Update ready', message: 'Gold Medal Hub ' + i.version + ' is ready.',
       detail: 'Restart now to finish updating, or it will install the next time you close the app.' })
@@ -182,6 +183,24 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   return win;
 }
+// Header "Check for updates" button: asks GitHub, waits for the answer, reports what happened.
+ipcMain.handle('update:check', async () => {
+  const current = app.getVersion();
+  if (!app.isPackaged || !theUpdater) return { state: 'dev', current };
+  if (updateInfo.state === 'ready') return { state: 'ready', version: updateInfo.version, current };
+  manualCheck = true; updateInfo = { state: 'checking' };
+  try { theUpdater.checkForUpdates().catch(() => {}); } catch (e) {}
+  const t0 = Date.now();
+  while (Date.now() - t0 < 180000) {
+    await new Promise(r => setTimeout(r, 500));
+    const st = updateInfo.state;
+    if (st === 'checking' && Date.now() - t0 > 25000) { updateInfo = { state: 'offline-or-error', error: 'timeout' }; break; }
+    if (st === 'current' || st === 'ready' || st === 'offline-or-error') break;
+  }
+  manualCheck = false;
+  return Object.assign({ current }, updateInfo);
+});
+ipcMain.handle('update:install', () => { if (theUpdater && updateInfo.state === 'ready') { setImmediate(() => theUpdater.quitAndInstall()); return true; } return false; });
 let mainWin = null, runCheck = null;
 app.whenReady().then(() => {
   Menu.setApplicationMenu(Menu.buildFromTemplate([

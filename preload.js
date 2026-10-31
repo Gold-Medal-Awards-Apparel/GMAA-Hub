@@ -1,5 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
   getData: () => ipcRenderer.invoke('data:get'),
   importData: () => ipcRenderer.invoke('data:import'),
   shopifyStatus: () => ipcRenderer.invoke('shopify:status'),
