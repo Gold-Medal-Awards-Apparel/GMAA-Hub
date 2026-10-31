@@ -120,7 +120,7 @@ function detect(headers, fileName) {
   }
   if (hs.includes('product') && hs.includes('description') && hs.includes('price 1') && hs.includes('qty brk')) {
     const pcs = [], qb = []; hs.forEach((h, i) => { if (/^qty brk$/.test(h)) qb.push(i); });
-    ['price 1', 'price 2', 'price 3', 'price 4'].forEach((h, k) => { const col = hs.indexOf(h); if (col >= 0) pcs.push({ label: 'Price ' + (k + 1), col, brk: k > 0 && qb[k - 1] != null ? qb[k - 1] : -1 }); });
+    ['price 1', 'price 2', 'price 3', 'price 4'].forEach((h, k) => { const col = hs.indexOf(h); if (col >= 0) pcs.push({ label: k === 0 ? 'Each' : 'Break ' + k, col, brk: k > 0 && qb[k - 1] != null ? qb[k - 1] : -1 }); });
     return { known: 'Marco', mapping: M({ supplier: 'Marco', sku: hs.indexOf('product'), desc: hs.indexOf('description'), size: hs.indexOf('description 2'), page: hs.indexOf('page'), prices: pcs }) };
   }
   const pr = []; headers.forEach((h, i) => { if (/price|cost|each|case|break|club|net|list/i.test(h) && !/previous|prev|date|qty|quantity|pk|pack|page/i.test(h)) pr.push({ label: norm(h), col: i }); });
