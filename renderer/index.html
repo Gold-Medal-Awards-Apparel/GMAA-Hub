@@ -214,11 +214,13 @@ body.tv .job .who{font-size:14px;color:var(--navy2)}
 #catView .soon{background:#FFF3C4;border-radius:8px;padding:1px 7px;font-size:11.5px}#catView .up{color:#B42318}#catView .dn{color:#067647}
 .wmodal .wt{width:100%;border-collapse:collapse;background:#fff}.wmodal .wt th{background:var(--navy);color:#fff;text-align:left;padding:6px 8px;font-size:12.5px}.wmodal .wt td{padding:6px 8px;border-top:1px solid #E6E6E6;vertical-align:top}.wmodal .wt .n{text-align:right}
 .wmodal .cmgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:8px}.wmodal label{display:block;font-size:12.5px;color:var(--muted);margin:6px 0 2px}.wmodal select,.wmodal input{width:100%;box-sizing:border-box}
+tr.hascm{cursor:pointer}tr.hascm:hover td{background:#FFFBEA}.cmtag{display:inline-block;margin-left:4px;padding:0 6px;border-radius:8px;background:#FBF3DC;border:1px solid #D4A13A;font-size:11px;color:#6B4E00}
+tr.cmrow td{background:#FFFBEA;border-top:none}.cmbox{padding:6px 10px 8px;border-left:4px solid var(--accent)}.cmi{margin-top:5px;white-space:pre-wrap}.cmd{color:var(--muted);font-size:12px;margin-right:6px}@media print{tr.cmrow{display:none}.cmtag{display:none}}
 </style>
 </head>
 <body>
 <header class="top">
-  <div class="brand"><img src="logo.png" alt="Gold Medal Awards &amp; Apparel"><div><div class="eyebrow">Gold Medal Awards &amp; Apparel &middot; v0.9.5</div><h1>Gold Medal Hub &middot; Order History</h1><div class="sub" id="coverage"></div></div></div>
+  <div class="brand"><img src="logo.png" alt="Gold Medal Awards &amp; Apparel"><div><div class="eyebrow">Gold Medal Awards &amp; Apparel &middot; v0.9.6</div><h1>Gold Medal Hub &middot; Order History</h1><div class="sub" id="coverage"></div></div></div>
   <div class="hdr-right"><button class="btn ghost tabbtn on" id="tabSearch">Search</button><button class="btn ghost tabbtn" id="tabBoard">Order board</button><button class="btn ghost tabbtn" id="tabNotes">Notes</button><button class="btn ghost tabbtn" id="tabUpdates" style="display:none">Job updates</button><button class="btn ghost tabbtn" id="tabPrice">Price check</button><button class="btn ghost tabbtn" id="tabCust">Customers</button><button class="btn ghost tabbtn" id="tabInv">Inventory</button><button class="btn ghost tabbtn" id="tabCat">Catalog</button><span id="syncStatus" class="syncstatus"></span><button class="btn ghost" id="syncBtn" title="Get the newest orders from Shopify">Sync new orders</button><button class="btn ghost" id="shopBtn" title="Shopify connection">&#9881;</button><button class="btn ghost" id="updBtn" title="Look for a newer version of the app">Check for updates</button><button class="btn ghost" id="helpBtn">How to search / abbreviations</button></div>
 </header>
 <div id="dueBar" class="duebar" style="display:none"></div>

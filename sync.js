@@ -4,10 +4,11 @@ const path = require('path');
 const API_VERSION = '2026-01';
 
 const QUERY = `query($cursor:String,$q:String){
-  orders(first:10, after:$cursor, query:$q, sortKey:UPDATED_AT){
+  orders(first:5, after:$cursor, query:$q, sortKey:UPDATED_AT){
     pageInfo{hasNextPage endCursor}
     nodes{
-      id legacyResourceId name createdAt updatedAt cancelledAt displayFinancialStatus
+      id legacyResourceId name createdAt updatedAt cancelledAt displayFinancialStatus note
+      events(first:50){ pageInfo{hasNextPage endCursor} nodes{ __typename ... on CommentEvent{ createdAt rawMessage } } }
       customer{ legacyResourceId firstName lastName defaultAddress{ company } }
       billingAddress{ name company }
       shippingLines(first:5){ nodes{ title originalPriceSet{ shopMoney{ amount } } } }
@@ -110,8 +111,25 @@ function makeSync({ dir, safeStorage, baseUrl }) {
       const amt = num(sl.originalPriceSet && sl.originalPriceSet.shopMoney.amount);
       if (amt > 0) rows.push([date, String(sl.title || 'Shipping'), 1, amt, amt, 2, status]);
     }
-    return { n: parseInt(String(o.name).replace(/\D/g, ''), 10) || 0, cust, co, custId: cu.legacyResourceId || '', rows,
+    // Timeline comments (the staff-only ones on the order page) plus the order's Notes box, oldest first.
+    const cm = []; if (o.note && String(o.note).trim()) cm.push([localDate(o.createdAt), 'Order note: ' + String(o.note).trim()]);
+    const evs = ((o.events && o.events.nodes) || []).filter(e => e && e.__typename === 'CommentEvent' && String(e.rawMessage || '').trim()).sort((a, b) => String(a.createdAt) < String(b.createdAt) ? -1 : 1);
+    for (const e of evs) cm.push([localDate(e.createdAt), String(e.rawMessage).trim().slice(0, 4000)]);
+    const out = { n: parseInt(String(o.name).replace(/\D/g, ''), 10) || 0, cust, co, custId: cu.legacyResourceId || '', rows,
       more: !!(o.lineItems && o.lineItems.pageInfo && o.lineItems.pageInfo.hasNextPage) };
+    if (cm.length) out.cm = cm;
+    return out;
+  }
+  // An order with a very long timeline: fetch the rest of its events so no comment is missed.
+  const MORE_EVENTS = `query($id:ID!,$cursor:String){ node(id:$id){ ... on Order{ events(first:100, after:$cursor){ pageInfo{hasNextPage endCursor} nodes{ __typename ... on CommentEvent{ createdAt rawMessage } } } } } }`;
+  async function allEvents(c, token, o) {
+    let ev = o.events; if (!ev || !ev.pageInfo || !ev.pageInfo.hasNextPage) return;
+    const nodes = ev.nodes.slice(); let cursor = ev.pageInfo.endCursor;
+    for (let k = 0; k < 20; k++) {
+      const d = await gql(c, token, { id: o.id, cursor }, MORE_EVENTS), e2 = d && d.node && d.node.events; if (!e2) break;
+      nodes.push(...e2.nodes); if (!e2.pageInfo.hasNextPage) break; cursor = e2.pageInfo.endCursor;
+    }
+    o.events = { nodes, pageInfo: { hasNextPage: false } };
   }
 
   const OQUERY = `query($q:String){
@@ -151,14 +169,18 @@ function makeSync({ dir, safeStorage, baseUrl }) {
     const store = loadNew();
     if (store.shop && store.shop !== c.shop) { store.orders = {}; store.lastUpdated = ''; }   // switched stores: start over
     store.shop = c.shop;
-    const since = store.lastUpdated ? new Date(new Date(store.lastUpdated).getTime() - 10 * 60 * 1000).toISOString() : '';   // 10-minute overlap
-    const q = since ? "updated_at:>'" + since + "'" : '';
+    const comments = store.cmv === 1;   // orders saved before comments were collected: download everything again once
+    const since = store.lastUpdated && comments ? new Date(new Date(store.lastUpdated).getTime() - 10 * 60 * 1000).toISOString() : '';   // 10-minute overlap
+    // Adding a timeline comment may not change the order's "updated" time, so orders from the last 3 weeks are always re-read too.
+    const recent = new Date(Date.now() - 21 * 86400000).toISOString();
+    const q = since ? "updated_at:>'" + since + "' OR created_at:>'" + recent + "'" : '';
     let cursor = null, changed = 0, seen = 0, maxUpdated = store.lastUpdated, partial = 0;
     for (;;) {
       const data = await gql(c, token, { cursor, q: q || null });
       const page = data.orders;
       for (const o of page.nodes) {
         seen++;
+        await allEvents(c, token, o);
         const conv = convert(o); if (conv.more) partial++;
         const key = String(o.legacyResourceId);
         const prev = store.orders[key];
@@ -168,10 +190,10 @@ function makeSync({ dir, safeStorage, baseUrl }) {
       if (!page.pageInfo.hasNextPage) break;
       cursor = page.pageInfo.endCursor;
     }
-    store.lastUpdated = maxUpdated || store.lastUpdated;
+    store.cmv = 1; store.lastUpdated = maxUpdated || store.lastUpdated;
     store.syncedAt = new Date().toISOString();
     saveNew(store);
-    return { seen, changed, total: Object.keys(store.orders).length, partial };
+    return { seen, changed, total: Object.keys(store.orders).length, partial, reloaded: !comments };
   }
 
   const PQUERY = `query($cursor:String){
@@ -201,7 +223,7 @@ function makeSync({ dir, safeStorage, baseUrl }) {
   }
   function status() {
     const c = loadCreds(), s = loadNew();
-    return { configured: !!c, shop: c ? c.shop : '', syncedAt: s.syncedAt, orders: Object.keys(s.orders).length };
+    return { configured: !!c, shop: c ? c.shop : '', syncedAt: s.syncedAt, orders: Object.keys(s.orders).length, needsComments: !!c && s.cmv !== 1 };
   }
 
   // Combine old-store data with synced new-store orders into the one shape the search screen uses.
@@ -211,11 +233,13 @@ function makeSync({ dir, safeStorage, baseUrl }) {
     const c = old.c.slice(), co = old.co.slice(), r = old.r.slice();
     const ci = new Map(c.map((v, i) => [v, i])), coi = new Map(co.map((v, i) => [v, i]));
     const idx = (v, arr, m) => { if (!m.has(v)) { m.set(v, arr.length); arr.push(v); } return m.get(v); };
+    const cm = {};
     for (const [id, o] of Object.entries(s.orders)) {
+      if (o.cm && o.cm.length) cm[id] = o.cm;
       const a = idx(o.cust, c, ci), b = idx(o.co, co, coi);
       for (const x of o.rows) r.push([x[0], o.n, a, b, x[1], x[2], x[3], x[4], x[5], x[6], 1, id, o.custId]);
     }
-    return { c, co, r, store: handle, newOrders: Object.keys(s.orders).length };
+    return { c, co, r, cm, store: handle, newOrders: Object.keys(s.orders).length };
   }
 
   return { loadCreds, saveCreds, clearCreds, getToken, sync, lookupOrder, syncProducts, loadProducts, status, merge, normShop };

@@ -31,7 +31,8 @@
     syncing=false; $('syncBtn').disabled=false; $('syncBtn').textContent='Sync new orders';
     await refreshStatus();
     if(r.error){ if(!(auto&&r.offline)) say(r.error); return; }
-    if(r.changed>0) banner(r.changed+' new or updated order'+(r.changed===1?'':'s')+' from Shopify. Refresh to include '+(r.changed===1?'it':'them')+' in searches.');
+    if(r.reloaded&&r.changed>=0) banner('Downloaded your Shopify orders again, this time with the staff comments (search finds them; click an order row to read them). Refresh to see them.');
+    else if(r.changed>0) banner(r.changed+' new or updated order'+(r.changed===1?'':'s')+' from Shopify. Refresh to include '+(r.changed===1?'it':'them')+' in searches.');
     else if(!auto) say('Shopify returned '+r.seen+' order'+(r.seen===1?'':'s')+' this time; '+r.total+' saved in total. Nothing new since the last sync.');
     if(r.partial>0) say(r.partial+' order(s) have more than 60 items; only the first 60 were saved.');
   }
@@ -99,7 +100,7 @@
     s.onload=async()=>{
       const cs=document.createElement('script'); cs.src='customers.js'; document.body.appendChild(cs); const ps=document.createElement('script'); ps.src='pricecheck.js'; document.body.appendChild(ps); const ws=document.createElement('script'); ws.src='workboard.js'; ws.onload=()=>{ const is=document.createElement('script'); is.src='inventory.js'; is.onload=()=>{ const cv=document.createElement('script'); cv.src='catalogview.js'; document.body.appendChild(cv); }; document.body.appendChild(is); }; document.body.appendChild(ws);
       const st=await refreshStatus();
-      if(st.configured){ const stale=!st.syncedAt || (Date.now()-new Date(st.syncedAt))>6*3600*1000; if(stale) doSync(true); }   // auto-sync on open if older than 6 hours
+      if(st.configured){ const stale=!st.syncedAt || (Date.now()-new Date(st.syncedAt))>6*3600*1000; if(stale||st.needsComments) doSync(true); }   // auto-sync on open if older than 6 hours
     };
   }
   $('importBtn').addEventListener('click', async()=>{

@@ -105,7 +105,8 @@ const NHAY = new Array(ROWS.length);   // customer + company names only
 const WORDCOUNT = new Map();
 for (let i=0;i<ROWS.length;i++){
   const r = ROWS[i];
-  const h = norm(DATA.c[r[2]]+' '+DATA.co[r[3]]+' '+r[4]+' '+r[1]);
+  const cmx = DATA.cm && r[10]===1 ? DATA.cm[r[11]] : null;   // staff comments on the order make every line of it findable
+  const h = norm(DATA.c[r[2]]+' '+DATA.co[r[3]]+' '+r[4]+' '+r[1]+(cmx?' '+cmx.map(x=>x[1]).join(' '):''));
   HAY[i] = ' '+h+' ';
   NHAY[i] = ' '+norm(DATA.c[r[2]]+' '+DATA.co[r[3]])+' ';
 }
@@ -389,14 +390,21 @@ function render(){
   $('printMeta').textContent = 'Search: "'+S.q+'"  ·  Printed '+new Date().toLocaleDateString()+'  ·  '+rows.length.toLocaleString()+' matching lines'+
     (rows.length>500?' (first 500 printed)':'')+'  ·  Prices are unit prices from old-store order lines.';
 }
+const hasCm = r => !!(DATA.cm && r[10]===1 && DATA.cm[r[11]]);
+function toggleCm(tr){   // click a row (not the order number) to read the staff comments on that order
+  const r=ROWS[Number(tr.dataset.i)]; if(!hasCm(r)) return;
+  const nx=tr.nextElementSibling; if(nx && nx.classList.contains('cmrow')){ nx.remove(); return; }
+  const hres=hlTerms();
+  tr.insertAdjacentHTML('afterend','<tr class="cmrow"><td></td><td colspan="7"><div class="cmbox"><b>Comments on '+esc(ordTag(r))+'</b>'+DATA.cm[r[11]].map(x=>'<div class="cmi"><span class="cmd">'+esc(fmtDate(x[0]))+'</span> <span class="cmt">'+hl(x[1],hres)+'</span></div>').join('')+'</div></td></tr>');
+}
 function rowsHtml(a,b,hres){
   let h='';
   for (let k=a;k<b;k++){
     const x=S.res[k], r=ROWS[x.i], cust=DATA.c[r[2]], co=DATA.co[r[3]];
     const who = cust||co||'(unknown)', sub = cust && co ? co : '';
     const sel=S.sel.has(x.i);
-    h+='<tr data-i="'+x.i+'" class="'+(r[8]===2?'fee ':'')+(sel?'sel':'unsel')+'"><td class="chk noprint"><input type="checkbox" data-i="'+x.i+'"'+(sel?' checked':'')+'></td>'+
-      '<td class="date">'+fmtDate(r[0])+'</td><td>'+ordHtml(r)+badge(r[9])+'</td>'+
+    h+='<tr data-i="'+x.i+'" class="'+(hasCm(r)?'hascm ':'')+(r[8]===2?'fee ':'')+(sel?'sel':'unsel')+'"><td class="chk noprint"><input type="checkbox" data-i="'+x.i+'"'+(sel?' checked':'')+'></td>'+
+      '<td class="date">'+fmtDate(r[0])+'</td><td>'+ordHtml(r)+badge(r[9])+(hasCm(r)?' <span class="cmtag" title="Click this row to read the comments">comments</span>':'')+'</td>'+
       '<td class="who">'+whoHtml(r,who,hres)+(sub?'<div class="co">'+hl(sub,hres)+'</div>':'')+'</td>'+
       '<td class="item">'+hl(r[4],hres)+'</td><td class="num">'+r[5]+'</td>'+
       '<td class="num">'+(r[6]>0?money(r[6]):'—')+'</td><td class="num">'+(r[7]>0?money(r[7]):'—')+'</td></tr>';
@@ -465,6 +473,7 @@ document.querySelectorAll('.examples a').forEach(a=>a.addEventListener('click',(
 $('interp').addEventListener('click',e=>{ if(e.target.dataset.x==='date'){ S.ignoreDates=true; trigger(true); } });
 $('out').addEventListener('click',e=>{
   const t=e.target;
+  { const tr=t.closest && t.closest('tr[data-i]'); if(tr && tr.classList.contains('hascm') && !t.closest('a,input,button,th')) toggleCm(tr); }
   if (t.id==='moreBtn') appendMore(100); else if (t.id==='allBtn') appendMore(Infinity);
   else if (t.id==='copyBtn') copyText(); else if (t.id==='csvBtn') saveCsv(); else if (t.id==='printBtn') window.print();
   else if (t.id==='selAll'){ S.res.slice(0,S.limit).forEach(x=>S.sel.add(x.i)); document.querySelectorAll('#tb tr').forEach(tr=>{ tr.className=tr.className.replace(/\b(un)?sel\b/,'sel'); const c=tr.querySelector('input'); if(c) c.checked=true; }); updateCounts(); }
