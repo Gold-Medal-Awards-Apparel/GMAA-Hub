@@ -3,16 +3,16 @@ const fs = require('fs');
 const path = require('path');
 const API_VERSION = '2026-01';
 
-const QUERY = `query($cursor:String,$q:String){
-  orders(first:5, after:$cursor, query:$q, sortKey:UPDATED_AT){
+const QUERY = `query($cursor:String,$q:String,$n:Int){
+  orders(first:$n, after:$cursor, query:$q, sortKey:UPDATED_AT){
     pageInfo{hasNextPage endCursor}
     nodes{
       id legacyResourceId name createdAt updatedAt cancelledAt displayFinancialStatus note
       events(first:50){ pageInfo{hasNextPage endCursor} nodes{ __typename ... on CommentEvent{ createdAt rawMessage } } }
       customer{ legacyResourceId firstName lastName defaultAddress{ company } }
       billingAddress{ name company }
-      shippingLines(first:5){ nodes{ title originalPriceSet{ shopMoney{ amount } } } }
-      lineItems(first:60){ pageInfo{hasNextPage} nodes{ name sku quantity originalUnitPriceSet{ shopMoney{ amount } } discountedTotalSet{ shopMoney{ amount } } } }
+      shippingLines(first:5){ nodes{ title originalPriceSet{ shopMoney{ amount } } taxLines{ priceSet{ shopMoney{ amount } } } } }
+      lineItems(first:60){ pageInfo{hasNextPage} nodes{ name sku quantity originalUnitPriceSet{ shopMoney{ amount } } discountedTotalSet{ shopMoney{ amount } } taxLines{ priceSet{ shopMoney{ amount } } } } }
     }
   }
 }`;
@@ -84,7 +84,7 @@ function makeSync({ dir, safeStorage, baseUrl }) {
         const msg = JSON.stringify(j.errors);
         if (/THROTTLED/i.test(msg)) { await new Promise(s => setTimeout(s, 2000 * (attempt + 1))); continue; }
         if (/access denied|not approved|protected customer/i.test(msg)) throw new Error((/product/i.test(msg) ? 'Shopify has not given this app permission to read products yet. In the Dev Dashboard add the read_products scope, release a new version, then approve the update on the store. Details: ' : 'Shopify denied access to some data: ') + (j.errors[0].message || msg) + ' (In the Dev Dashboard, check the app scopes and the protected customer data request.)');
-        throw new Error('Shopify error: ' + (j.errors[0].message || msg));
+        const err = new Error('Shopify error: ' + (j.errors[0].message || msg)); err.cost = /cost|too (large|complex|expensive)|exceed/i.test(msg); throw err;
       }
       return j.data;
     }
@@ -95,6 +95,7 @@ function makeSync({ dir, safeStorage, baseUrl }) {
   const num = x => { const n = parseFloat(x); return isFinite(n) ? Math.round(n * 100) / 100 : 0; };
   function localDate(iso) { const d = new Date(iso); const p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
 
+  const taxOf = x => Math.round(((x && x.taxLines) || []).reduce((t, l) => t + num(l && l.priceSet && l.priceSet.shopMoney && l.priceSet.shopMoney.amount), 0) * 100) / 100;
   function convert(o) {
     const cu = o.customer || {}, ba = o.billingAddress || {};
     const cust = ([cu.firstName, cu.lastName].filter(Boolean).join(' ') || ba.name || '').trim();
@@ -105,11 +106,11 @@ function makeSync({ dir, safeStorage, baseUrl }) {
     for (const li of (o.lineItems && o.lineItems.nodes) || []) {
       const qty = li.quantity || 0, unit = num(li.originalUnitPriceSet && li.originalUnitPriceSet.shopMoney.amount);
       const total = num(li.discountedTotalSet && li.discountedTotalSet.shopMoney.amount);
-      rows.push([date, String(li.name || '').trim(), qty, unit, total, unit > 0 ? 0 : 1, status]);
+      rows.push([date, String(li.name || '').trim(), qty, unit, total, unit > 0 ? 0 : 1, status, taxOf(li)]);
     }
     for (const sl of (o.shippingLines && o.shippingLines.nodes) || []) {
       const amt = num(sl.originalPriceSet && sl.originalPriceSet.shopMoney.amount);
-      if (amt > 0) rows.push([date, String(sl.title || 'Shipping'), 1, amt, amt, 2, status]);
+      if (amt > 0) rows.push([date, String(sl.title || 'Shipping'), 1, amt, amt, 2, status, taxOf(sl)]);
     }
     // Timeline comments (the staff-only ones on the order page) plus the order's Notes box, oldest first.
     const cm = []; if (o.note && String(o.note).trim()) cm.push([localDate(o.createdAt), 'Order note: ' + String(o.note).trim()]);
@@ -169,14 +170,14 @@ function makeSync({ dir, safeStorage, baseUrl }) {
     const store = loadNew();
     if (store.shop && store.shop !== c.shop) { store.orders = {}; store.lastUpdated = ''; }   // switched stores: start over
     store.shop = c.shop;
-    const comments = store.cmv === 1;   // orders saved before comments were collected: download everything again once
+    const comments = store.cmv === 2;   // orders saved before comments and tax were collected: download everything again once
     const since = store.lastUpdated && comments ? new Date(new Date(store.lastUpdated).getTime() - 10 * 60 * 1000).toISOString() : '';   // 10-minute overlap
     // Adding a timeline comment may not change the order's "updated" time, so orders from the last 3 weeks are always re-read too.
     const recent = new Date(Date.now() - 21 * 86400000).toISOString();
     const q = since ? "updated_at:>'" + since + "' OR created_at:>'" + recent + "'" : '';
-    let cursor = null, changed = 0, seen = 0, maxUpdated = store.lastUpdated, partial = 0;
+    let cursor = null, changed = 0, seen = 0, maxUpdated = store.lastUpdated, partial = 0, pageSize = 5;
     for (;;) {
-      const data = await gql(c, token, { cursor, q: q || null });
+      let data; try { data = await gql(c, token, { cursor, q: q || null, n: pageSize }); } catch (e) { if (e.cost && pageSize > 1) { pageSize = Math.max(1, Math.floor(pageSize / 2)); continue; } throw e; }   // too costly for Shopify? ask for fewer orders per request
       const page = data.orders;
       for (const o of page.nodes) {
         seen++;
@@ -190,7 +191,7 @@ function makeSync({ dir, safeStorage, baseUrl }) {
       if (!page.pageInfo.hasNextPage) break;
       cursor = page.pageInfo.endCursor;
     }
-    store.cmv = 1; store.lastUpdated = maxUpdated || store.lastUpdated;
+    store.cmv = 2; store.lastUpdated = maxUpdated || store.lastUpdated;
     store.syncedAt = new Date().toISOString();
     saveNew(store);
     return { seen, changed, total: Object.keys(store.orders).length, partial, reloaded: !comments };
@@ -223,7 +224,7 @@ function makeSync({ dir, safeStorage, baseUrl }) {
   }
   function status() {
     const c = loadCreds(), s = loadNew();
-    return { configured: !!c, shop: c ? c.shop : '', syncedAt: s.syncedAt, orders: Object.keys(s.orders).length, needsComments: !!c && s.cmv !== 1 };
+    return { configured: !!c, shop: c ? c.shop : '', syncedAt: s.syncedAt, orders: Object.keys(s.orders).length, needsComments: !!c && s.cmv !== 2 };
   }
 
   // Combine old-store data with synced new-store orders into the one shape the search screen uses.
@@ -237,7 +238,7 @@ function makeSync({ dir, safeStorage, baseUrl }) {
     for (const [id, o] of Object.entries(s.orders)) {
       if (o.cm && o.cm.length) cm[id] = o.cm;
       const a = idx(o.cust, c, ci), b = idx(o.co, co, coi);
-      for (const x of o.rows) r.push([x[0], o.n, a, b, x[1], x[2], x[3], x[4], x[5], x[6], 1, id, o.custId]);
+      for (const x of o.rows) r.push([x[0], o.n, a, b, x[1], x[2], x[3], x[4], x[5], x[6], 1, id, o.custId, x[7] == null ? null : x[7]]);
     }
     return { c, co, r, cm, store: handle, newOrders: Object.keys(s.orders).length };
   }

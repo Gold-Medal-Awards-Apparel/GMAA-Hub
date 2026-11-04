@@ -286,7 +286,7 @@ function sortResults(){
     case 'date': return r[0]; case 'order': return r[1];
     case 'name': return (DATA.c[r[2]]||DATA.co[r[3]]||'').toLowerCase();
     case 'item': return r[4].toLowerCase(); case 'qty': return r[5];
-    case 'price': return r[6]; case 'total': return r[7]; case 'score': return x.s; } };
+    case 'price': return r[6]; case 'total': return r[7]; case 'tax': return r[13]==null?-1:r[13]; case 'score': return x.s; } };
   S.res.sort((a,b)=>{ const A=key(a), B=key(b); if(A<B) return -dir; if(A>B) return dir;
     if (k==='score'){ const da=ROWS[a.i][0], db=ROWS[b.i][0]; if(da!==db) return da<db?1:-1; }
     return b.i-a.i; });
@@ -381,7 +381,7 @@ function render(){
   html+='<div class="tablewrap"><table class="t res'+(S.sel.size?' hassel':'')+'"><thead><tr><th class="chk noprint"></th>'+
     '<th class="sortable" data-s="date">Date'+arrow('date')+'</th><th class="sortable" data-s="order">Order'+arrow('order')+'</th>'+
     '<th class="sortable" data-s="name">Customer'+arrow('name')+'</th><th class="sortable" data-s="item">Item'+arrow('item')+'</th>'+
-    '<th class="sortable num" data-s="qty">Qty'+arrow('qty')+'</th><th class="sortable num" data-s="price">Unit price'+arrow('price')+'</th><th class="sortable num" data-s="total">Line total'+arrow('total')+'</th></tr></thead><tbody id="tb">';
+    '<th class="sortable num" data-s="qty">Qty'+arrow('qty')+'</th><th class="sortable num" data-s="price">Unit price'+arrow('price')+'</th><th class="sortable num" data-s="total">Line total'+arrow('total')+'</th><th class="sortable num" data-s="tax" title="Sales tax charged on this line (orders from the new store only)">Tax'+arrow('tax')+'</th></tr></thead><tbody id="tb">';
   html+=rowsHtml(0,shown,hres);
   html+='</tbody></table></div>';
   html+='<div class="more noprint" id="moreWrap"></div>';
@@ -395,7 +395,7 @@ function toggleCm(tr){   // click a row (not the order number) to read the staff
   const r=ROWS[Number(tr.dataset.i)]; if(!hasCm(r)) return;
   const nx=tr.nextElementSibling; if(nx && nx.classList.contains('cmrow')){ nx.remove(); return; }
   const hres=hlTerms();
-  tr.insertAdjacentHTML('afterend','<tr class="cmrow"><td></td><td colspan="7"><div class="cmbox"><b>Comments on '+esc(ordTag(r))+'</b>'+DATA.cm[r[11]].map(x=>'<div class="cmi"><span class="cmd">'+esc(fmtDate(x[0]))+'</span> <span class="cmt">'+hl(x[1],hres)+'</span></div>').join('')+'</div></td></tr>');
+  tr.insertAdjacentHTML('afterend','<tr class="cmrow"><td></td><td colspan="8"><div class="cmbox"><b>Comments on '+esc(ordTag(r))+'</b>'+DATA.cm[r[11]].map(x=>'<div class="cmi"><span class="cmd">'+esc(fmtDate(x[0]))+'</span> <span class="cmt">'+hl(x[1],hres)+'</span></div>').join('')+'</div></td></tr>');
 }
 function rowsHtml(a,b,hres){
   let h='';
@@ -407,7 +407,7 @@ function rowsHtml(a,b,hres){
       '<td class="date">'+fmtDate(r[0])+'</td><td>'+ordHtml(r)+badge(r[9])+(hasCm(r)?' <span class="cmtag" title="Click this row to read the comments">comments</span>':'')+'</td>'+
       '<td class="who">'+whoHtml(r,who,hres)+(sub?'<div class="co">'+hl(sub,hres)+'</div>':'')+'</td>'+
       '<td class="item">'+hl(r[4],hres)+'</td><td class="num">'+r[5]+'</td>'+
-      '<td class="num">'+(r[6]>0?money(r[6]):'—')+'</td><td class="num">'+(r[7]>0?money(r[7]):'—')+'</td></tr>';
+      '<td class="num">'+(r[6]>0?money(r[6]):'—')+'</td><td class="num">'+(r[7]>0?money(r[7]):'—')+'</td><td class="num tax">'+(r[13]==null?'—':money(r[13]))+'</td></tr>';
   }
   return h;
 }
@@ -446,8 +446,8 @@ function copyText(){
 function csvEsc(v){ v=String(v==null?'':v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
 function saveCsv(){
   const rows=S.sel.size?S.res.filter(x=>S.sel.has(x.i)).map(x=>ROWS[x.i]):S.res.map(x=>ROWS[x.i]);
-  const head=['Date','Order #','Customer','Company','Item','Qty','Unit Price','Line Total','Order Status'];
-  const lines=[head.join(',')].concat(rows.map(r=>[r[0],r[1],DATA.c[r[2]],DATA.co[r[3]],r[4],r[5],r[6],r[7],STATUS[r[9]]].map(csvEsc).join(',')));
+  const head=['Date','Order #','Customer','Company','Item','Qty','Unit Price','Line Total','Tax','Order Status'];
+  const lines=[head.join(',')].concat(rows.map(r=>[r[0],r[1],DATA.c[r[2]],DATA.co[r[3]],r[4],r[5],r[6],r[7],r[13]==null?'':r[13],STATUS[r[9]]].map(csvEsc).join(',')));
   const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download='order-search-'+(S.q.replace(/[^a-z0-9]+/gi,'-').slice(0,40)||'results')+'.csv'; document.body.appendChild(a); a.click();

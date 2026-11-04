@@ -19,7 +19,7 @@
   // Reload the page with the new orders. The search text is put back afterwards, so nothing you typed is lost.
   function reloadNow(){
     try{ const q=$('q'); sessionStorage.setItem('gmRestore',JSON.stringify({q:q?q.value:'',at:Date.now()})); }catch(e){}
-    Promise.resolve(window.api.reloadApp()).then(ok=>{ if(!ok) location.reload(); }).catch(()=>location.reload());
+    try{ Promise.resolve(window.api.reloadApp()).then(ok=>{ if(!ok) location.reload(); }).catch(()=>location.reload()); }catch(e){ location.reload(); }
   }
   function justReloaded(){ try{ const o=JSON.parse(sessionStorage.getItem('gmRestore')||'null'); return !!o&&Date.now()-o.at<90000; }catch(e){ return false; } }
   function banner(text){
