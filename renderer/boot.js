@@ -16,11 +16,17 @@
     $('syncBtn').style.display = s.configured ? '' : 'none';
     return s;
   }
+  // Reload the page with the new orders. The search text is put back afterwards, so nothing you typed is lost.
+  function reloadNow(){
+    try{ const q=$('q'); sessionStorage.setItem('gmRestore',JSON.stringify({q:q?q.value:'',at:Date.now()})); }catch(e){}
+    Promise.resolve(window.api.reloadApp()).then(ok=>{ if(!ok) location.reload(); }).catch(()=>location.reload());
+  }
+  function justReloaded(){ try{ const o=JSON.parse(sessionStorage.getItem('gmRestore')||'null'); return !!o&&Date.now()-o.at<90000; }catch(e){ return false; } }
   function banner(text){
     let b=$('refreshBanner');
     if(!b){ b=document.createElement('div'); b.id='refreshBanner'; document.querySelector('main').prepend(b); }
     b.innerHTML=''; b.appendChild(document.createTextNode(text));
-    const btn=document.createElement('button'); btn.className='btn primary'; btn.textContent='Refresh now'; btn.onclick=()=>location.reload(); b.appendChild(btn);
+    const btn=document.createElement('button'); btn.className='btn primary'; btn.textContent='Refresh now'; btn.onclick=()=>reloadNow(); b.appendChild(btn);
     b.style.display='block';
   }
   function say(t){ const el=$('toast'); if(!el) return; el.textContent=t; el.classList.add('on'); clearTimeout(say.h); say.h=setTimeout(()=>el.classList.remove('on'),4000); }
@@ -31,8 +37,12 @@
     syncing=false; $('syncBtn').disabled=false; $('syncBtn').textContent='Sync new orders';
     await refreshStatus();
     if(r.error){ if(!(auto&&r.offline)) say(r.error); return; }
-    if(r.reloaded&&r.changed>=0) banner('Downloaded your Shopify orders again, this time with the staff comments (search finds them; click an order row to read them). Refresh to see them.');
-    else if(r.changed>0) banner(r.changed+' new or updated order'+(r.changed===1?'':'s')+' from Shopify. Refresh to include '+(r.changed===1?'it':'them')+' in searches.');
+    if(r.changed>0||(r.reloaded&&r.changed>=0)){
+      const txt=r.reloaded?'Downloaded your Shopify orders again, this time with the staff comments (search finds them; click an order row to read them).':r.changed+' new or updated order'+(r.changed===1?'':'s')+' from Shopify.';
+      const typing=auto&&$('q')&&$('q').value.trim()!=='';   // an automatic sync must not wipe what someone is typing
+      if(typing||justReloaded()) banner(txt+' Refresh to include '+(r.changed===1?'it':'them')+' in searches.');
+      else { say(txt+' Loading them now…'); setTimeout(reloadNow,900); }
+    }
     else if(!auto) say('Shopify returned '+r.seen+' order'+(r.seen===1?'':'s')+' this time; '+r.total+' saved in total. Nothing new since the last sync.');
     if(r.partial>0) say(r.partial+' order(s) have more than 60 items; only the first 60 were saved.');
   }
@@ -98,6 +108,7 @@
     window.__DATA__=d.data; window.__BUILT__=d.built;
     const s=document.createElement('script'); s.src='app.js'; document.body.appendChild(s);
     s.onload=async()=>{
+      try{ const o=JSON.parse(sessionStorage.getItem('gmRestore')||'null'); if(o&&o.q&&Date.now()-o.at<90000&&$('q')){ $('q').value=o.q; $('q').dispatchEvent(new Event('input',{bubbles:true})); } }catch(e){}
       const cs=document.createElement('script'); cs.src='customers.js'; document.body.appendChild(cs); const ps=document.createElement('script'); ps.src='pricecheck.js'; document.body.appendChild(ps); const ws=document.createElement('script'); ws.src='workboard.js'; ws.onload=()=>{ const is=document.createElement('script'); is.src='inventory.js'; is.onload=()=>{ const cv=document.createElement('script'); cv.src='catalogview.js'; document.body.appendChild(cv); }; document.body.appendChild(is); }; document.body.appendChild(ws);
       const st=await refreshStatus();
       if(st.configured){ const stale=!st.syncedAt || (Date.now()-new Date(st.syncedAt))>6*3600*1000; if(stale||st.needsComments) doSync(true); }   // auto-sync on open if older than 6 hours

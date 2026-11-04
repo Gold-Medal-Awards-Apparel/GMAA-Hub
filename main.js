@@ -35,6 +35,7 @@ function readOld() {
 }
 
 ipcMain.handle('data:get', () => readOld());
+ipcMain.handle('app:reload', e => { try { e.sender.reload(); return true; } catch (err) { return false; } });   // browser-side reload: the page's own location.reload() was being blocked
 ipcMain.handle('data:import', async () => {
   const win = BrowserWindow.getFocusedWindow();
   const r = await dialog.showOpenDialog(win, { title: 'Choose OrderHistory-OldStore.json', properties: ['openFile'], filters: [{ name: 'Order history data', extensions: ['json'] }] });
@@ -179,7 +180,7 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  win.webContents.on('will-navigate', e => e.preventDefault());
+  win.webContents.on('will-navigate', (e, url) => { if (url !== win.webContents.getURL()) e.preventDefault(); });   // block links to other pages, but allow reloading this one
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   return win;
 }
@@ -207,7 +208,7 @@ app.whenReady().then(() => {
     { label: 'File', submenu: [
       { label: 'Shared database connection…', click: (_, w) => { if (w) w.webContents.executeJavaScript('window.openCloud && window.openCloud()'); } },
       { label: 'Shopify connection…', click: (_, w) => { if (w) w.webContents.executeJavaScript('window.openShopify && window.openShopify()'); } },
-      { label: 'Import old-store data file…', click: (_, w) => { if (w) w.webContents.executeJavaScript("window.api.importData().then(r=>{ if(!r||!r.canceled) location.reload(); })"); } },
+      { label: 'Import old-store data file…', click: (_, w) => { if (w) w.webContents.executeJavaScript("window.api.importData().then(r=>{ if(!r||!r.canceled) window.api.reloadApp(); })"); } },
       { role: 'quit' } ] },
     { label: 'View', submenu: [{ role: 'reload' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'resetZoom' }, { role: 'togglefullscreen' }] },
     { label: 'Help', submenu: [
