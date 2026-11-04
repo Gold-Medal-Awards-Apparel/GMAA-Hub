@@ -6,7 +6,8 @@ const path = require('path');
 const zlib = require('zlib');
 
 // ---------------- file readers (no outside libraries) ----------------
-function parseCsv(text) {
+function parseCsv(text, delim) {
+  delim = delim || ',';
   if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
   const rows = []; let row = [], f = '', q = false, i = 0; const n = text.length;
   while (i < n) {
@@ -16,7 +17,7 @@ function parseCsv(text) {
       f += ch; i++; continue;
     }
     if (ch === '"') { q = true; i++; continue; }
-    if (ch === ',') { row.push(f); f = ''; i++; continue; }
+    if (ch === delim) { row.push(f); f = ''; i++; continue; }
     if (ch === '\r') { i++; continue; }
     if (ch === '\n') { row.push(f); rows.push(row); row = []; f = ''; i++; continue; }
     f += ch; i++;
@@ -79,10 +80,33 @@ function parseXlsx(buf) {   // first worksheet -> array of rows (arrays of strin
   }
   return rows.filter(r => r.some(c => String(c).trim() !== ''));
 }
+const sniffDelim = head => { const l = String(head).split(/\r?\n/)[0] || ''; return (l.match(/\t/g) || []).length > (l.match(/,/g) || []).length ? '\t' : ','; };
+// Reads a delimited file piece by piece (so a very large supplier file never has to fit in memory); onRow gets each row.
+function streamTable(file, delim, onRow) {
+  return new Promise((resolve, reject) => {
+    const rs = fs.createReadStream(file, { highWaterMark: 1 << 20 }), dec = new (require('string_decoder').StringDecoder)('utf8');
+    let row = [], f = '', q = false, qp = false, first = true;
+    const eat = text => {
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (qp) { qp = false; if (ch === '"') { f += '"'; continue; } q = false; }
+        if (q) { if (ch === '"') qp = true; else f += ch; continue; }
+        if (ch === '"') { q = true; continue; }
+        if (ch === delim) { row.push(f); f = ''; continue; }
+        if (ch === '\r') continue;
+        if (ch === '\n') { row.push(f); f = ''; if (row.some(c => c.trim() !== '')) onRow(row); row = []; continue; }
+        f += ch;
+      }
+    };
+    rs.on('data', b => { try { let t = dec.write(b); if (first) { first = false; if (t.charCodeAt(0) === 0xFEFF) t = t.slice(1); } eat(t); } catch (e) { rs.destroy(); reject(e); } });
+    rs.on('end', () => { try { eat(dec.end()); if (f !== '' || row.length) { row.push(f); if (row.some(c => c.trim() !== '')) onRow(row); } resolve(); } catch (e) { reject(e); } });
+    rs.on('error', reject);
+  });
+}
 function readTable(file) {
   const buf = fs.readFileSync(file);
   if (/\.xlsx$/i.test(file)) return parseXlsx(buf);
-  if (/\.(csv|txt)$/i.test(file)) return parseCsv(buf.toString('utf8'));
+  if (/\.(csv|txt|tsv)$/i.test(file)) return parseCsv(buf.toString('utf8'), sniffDelim(buf.toString('utf8', 0, 20000)));
   throw new Error('Please choose a .csv or .xlsx price list.');
 }
 
@@ -123,6 +147,10 @@ function detect(headers, fileName) {
     ['price 1', 'price 2', 'price 3', 'price 4'].forEach((h, k) => { const col = hs.indexOf(h); if (col >= 0) pcs.push({ label: k === 0 ? 'Each' : 'Break ' + k, col, brk: k > 0 && qb[k - 1] != null ? qb[k - 1] : -1 }); });
     return { known: 'Marco', mapping: M({ supplier: 'Marco', sku: hs.indexOf('product'), desc: hs.indexOf('description'), size: hs.indexOf('description 2'), page: hs.indexOf('page'), prices: pcs }) };
   }
+  if (isSanmar(headers)) {
+    const ix = n => hs.indexOf(n);
+    return { known: 'Sanmar', mapping: M({ supplier: 'Sanmar', sku: ix('style#'), desc: ix('product_title'), size: ix('size'), pack: ix('case_size'), prices: [{ label: 'Piece', col: ix('piece_price'), brk: -1 }, { label: 'Dozen', col: ix('dozens_price'), brk: -1 }, { label: 'Case', col: ix('case_price'), brk: -1 }] }) };
+  }
   const pr = []; headers.forEach((h, i) => { if (/price|cost|each|case|break|club|net|list/i.test(h) && !/previous|prev|date|qty|quantity|pk|pack|page/i.test(h)) pr.push({ label: norm(h), col: i }); });
   return { known: '', mapping: M({ sku: find(hs, 'sku', 'part#', 'part #', 'part number', 'item number', 'item #', 'item', 'style', 'code', 'number'), desc: find(hs, 'description', 'name', 'title', 'product', 'item name'), size: find(hs, 'size'),
     pack: find(hs, 'case qty', 'std pk', 'pack', 'pack qty', 'case', 'qty'), page: find(hs, 'page', 'pages'), catalog: find(hs, 'catalog'), prev: find(hs, 'previous price'), change: find(hs, 'last price change date', 'price change date'), prices: pr.slice(0, 6) }) };
@@ -137,6 +165,36 @@ function buildRecords(rows, m) {
     out.push([sku, desc, norm(cell(r, m.size)), pk ? Math.round(pk) : null, page && page !== '0' ? page : '', norm(cell(r, m.catalog)).replace(/^0$/, ''), m.prices.map(p => toNum(cell(r, p.col))), toNum(cell(r, m.prev)), toDate(cell(r, m.change))].concat(m.prices.some(p => p.brk >= 0) ? [m.prices.map(p => p.brk >= 0 ? toNum(cell(r, p.brk)) : null)] : []));
   }
   return out;
+}
+// Sanmar lists one row per style, colour and size. Rows of one style that share the same prices become one line.
+const isSanmar = hs => { const h = hs.map(x => norm(x).toLowerCase()); return ['style#', 'piece_price', 'case_price', 'color_name', 'size'].every(k => h.includes(k)); };
+function sanmarGrouper(headers) {
+  const h = headers.map(x => norm(x).toLowerCase()), ix = n => h.indexOf(n), I = { sty: ix('style#'), ti: ix('product_title'), col: ix('color_name'), sz: ix('size'), pc: ix('piece_price'), dz: ix('dozens_price'), cs: ix('case_price'), cq: ix('case_size'), si: ix('size_index'), st: ix('product_status') };
+  const groups = new Map(); let rows = 0;
+  const v = (r, i) => i >= 0 && i < r.length ? norm(r[i]) : '';
+  return {
+    add(r) {
+      const sty = v(r, I.sty); if (!sty) return; rows++;
+      const pc = toNum(v(r, I.pc)), dz = toNum(v(r, I.dz)), cs = toNum(v(r, I.cs)), cq = toNum(v(r, I.cq)), status = v(r, I.st);
+      const key = [sty, pc, dz, cs, cq, status].join('|'); let g = groups.get(key);
+      if (!g) { g = { sty, title: v(r, I.ti).replace(/\s+/g, ' ').replace(/\s*\.?\s*$/, ''), pc, dz, cs, cq, status, sizes: new Map(), colors: new Set() }; groups.set(key, g); }
+      const sz = v(r, I.sz), si = parseFloat(v(r, I.si)); if (sz) g.sizes.set(sz, isNaN(si) ? 1e6 + g.sizes.size : si);
+      const co = v(r, I.col); if (co) g.colors.add(co);
+    },
+    done() {
+      const recs = [];
+      for (const g of groups.values()) {
+        const sz = [...g.sizes.entries()].sort((a, b) => a[1] - b[1]), idx = sz.map(x => x[1]);
+        const contiguous = sz.length > 2 && idx.every((x, i) => i === 0 || x === idx[i - 1] + 1);
+        const sizeTxt = contiguous ? sz[0][0] + ' – ' + sz[sz.length - 1][0] : sz.map(x => x[0]).join(', ');
+        const cols = [...g.colors]; let ct = cols.join(', '); if (ct.length > 110) { let k = 0, t = ''; while (k < cols.length && (t + cols[k]).length < 100) t += (k ? ', ' : '') + cols[k++]; ct = t + ' … (' + cols.length + ' colors)'; }
+        const desc = (g.title + (ct ? ' — ' + ct : '') + (g.status && !/^(regular|active)$/i.test(g.status) ? ' [' + g.status + ']' : '')).slice(0, 300);
+        recs.push([g.sty, desc, sizeTxt, g.cq ? Math.round(g.cq) : null, '', '', [g.pc, g.dz, g.cs], null, null]);
+      }
+      recs.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : (a[6][0] || 0) - (b[6][0] || 0));
+      return { recs, rows };
+    }
+  };
 }
 function chunkRecords(recs, maxChars) {
   const chunks = []; let cur = [], len = 2;
@@ -239,6 +297,17 @@ function makeCatalog(ctx) {
 
   // ---- importing (admin) ----
   async function pick(file) {
+    if (/\.(csv|txt|tsv)$/i.test(file)) {   // Sanmar-style files are huge: read them in pieces and combine colours and sizes as we go
+      const fd = fs.openSync(file, 'r'), hb = Buffer.alloc(40000), n = fs.readSync(fd, hb, 0, hb.length, 0); fs.closeSync(fd);
+      const headText = hb.toString('utf8', 0, n), delim = sniffDelim(headText), hdr = (parseCsv(headText.split(/\r?\n/)[0], delim)[0] || []).map(norm);
+      if (isSanmar(hdr)) {
+        const g = sanmarGrouper(hdr), sample = []; let total = 0;
+        await streamTable(file, delim, r => { if (total === 0) { total++; return; } total++; if (sample.length < 4) sample.push(hdr.map((h, i) => r[i] == null ? '' : r[i])); g.add(r); });
+        const out = g.done(); if (!out.recs.length) return { error: 'No products were found in that file.' };
+        const name = path.basename(file), d = detect(hdr, name), token = newId(); pending = { token, recs: out.recs, name };
+        return { token, fileName: name, count: out.rows, combined: out.recs.length, headers: hdr, sample, known: d.known, mapping: d.mapping };
+      }
+    }
     let rows = readTable(file); if (rows.length < 2) return { error: 'That file has no rows to import.' };
     let titleDate = ''; const hi = rows.slice(0, 10).findIndex(r => r.filter(c => norm(c) !== '').length >= 4);   // skip a title line above the headings
     if (hi > 0) { titleDate = toDate(((/\d{1,2}\/\d{1,2}\/\d{2,4}/.exec(rows.slice(0, hi).map(r => r.join(' ')).join(' ')) || [''])[0])); rows = rows.slice(hi); }
@@ -252,12 +321,13 @@ function makeCatalog(ctx) {
     if (!pending || pending.token !== token) return { error: 'Please choose the file again.' };
     const m = mapping || {}; const name = str(m.supplier, 40).trim();
     if (!name) return { error: 'Type the supplier name (for example JDS).' };
-    if (!(m.sku >= 0)) return { error: 'Pick which column holds the product number (SKU).' };
-    if (!(m.desc >= 0)) return { error: 'Pick which column holds the description.' };
+    const pre = pending.recs;   // already combined (Sanmar-style files)
+    if (!pre && !(m.sku >= 0)) return { error: 'Pick which column holds the product number (SKU).' };
+    if (!pre && !(m.desc >= 0)) return { error: 'Pick which column holds the description.' };
     const prices = (m.prices || []).filter(p => p && p.col >= 0).slice(0, 6).map(p => ({ label: str(p.label, 30).trim() || 'Price', col: p.col, brk: p.brk >= 0 ? p.brk : -1 }));
-    if (!prices.length) return { error: 'Pick at least one price column.' };
+    if (!pre && !prices.length) return { error: 'Pick at least one price column.' };
     const mm = { sku: m.sku, desc: m.desc, size: m.size >= 0 ? m.size : -1, pack: m.pack >= 0 ? m.pack : -1, page: m.page >= 0 ? m.page : -1, catalog: m.catalog >= 0 ? m.catalog : -1, prev: m.prev >= 0 ? m.prev : -1, change: m.change >= 0 ? m.change : -1, prices };
-    const recs = buildRecords(pending.rows, mm); if (!recs.length) return { error: 'No products were found with those columns. Check the matching.' };
+    const recs = pre || buildRecords(pending.rows, mm); if (!recs.length) return { error: 'No products were found with those columns. Check the matching.' };
     const chunks = chunkRecords(recs, 38000), listDate = /^\d{4}-\d{2}-\d{2}$/.test(m.listDate || '') ? m.listDate : '';
     const prior = (await query(c, 'SELECT gen FROM cat_suppliers WHERE name=?', [name])).rows[0], maxg = (await query(c, 'SELECT MAX(gen) AS g FROM cat_chunks WHERE supplier=?', [name])).rows[0];
     const gen = Math.max(prior ? prior.gen : 0, maxg && maxg.g ? maxg.g : 0) + 1, now = new Date().toISOString(); let done = 0, next = 0, failed = null;

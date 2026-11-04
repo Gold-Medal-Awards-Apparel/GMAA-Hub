@@ -91,7 +91,7 @@
     const p = S.imp, m = p.mapping, hs = p.headers, pr = m.prices.slice(); while (pr.length < 4) pr.push({ label: '', col: -1 });
     const have = S.suppliers.find(s => s.name.toLowerCase() === (m.supplier || '').toLowerCase());
     openModal('<h3>Import ' + esc(p.fileName) + '</h3>' +
-      '<div class="note">' + p.count.toLocaleString() + ' rows found. ' + (p.known ? '<b>Recognized as a ' + esc(p.known) + ' price list</b>, so the columns are already matched. Check the preview, then import.' : 'This is a new kind of list. Match each piece of information to the column in your file that holds it.') + '</div>' +
+      '<div class="note">' + p.count.toLocaleString() + ' rows found' + (p.combined ? ', combined into <b>' + p.combined.toLocaleString() + ' lines</b> (colors and sizes with the same prices are merged into one line)' : '') + '. ' + (p.known ? '<b>Recognized as a ' + esc(p.known) + ' price list</b>, so the columns are already matched. Check the preview, then import.' : 'This is a new kind of list. Match each piece of information to the column in your file that holds it.') + '</div>' +
       '<div class="srow"><div style="flex:1 1 200px"><label>Supplier name</label><input id="cmName" value="' + esc(m.supplier) + '" maxlength="40"></div><div style="flex:1 1 200px"><label>Date of this price list</label><input id="cmDate" type="date" value="' + esc(m.listDate) + '"></div></div>' +
       '<div id="cmHave" class="note"></div>' +
       '<details' + (p.known ? '' : ' open') + '><summary style="cursor:pointer;margin:10px 0 4px;font-weight:600">Column matching</summary><div class="cmgrid">' +

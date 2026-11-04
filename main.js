@@ -94,7 +94,7 @@ ipcMain.handle('cat:status', cloudWrap(() => cl().catalog.status()));
 ipcMain.handle('cat:search', cloudWrap(o => cl().catalog.search(o)));
 ipcMain.handle('cat:pick', cloudWrap(async () => {
   await cl().catalog.guard();   // admins only; checked before the file window opens
-  const r = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow(), { title: 'Choose a supplier price list', properties: ['openFile'], filters: [{ name: 'Price lists (.csv, .xlsx)', extensions: ['csv', 'xlsx'] }] });
+  const r = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow(), { title: 'Choose a supplier price list', properties: ['openFile'], filters: [{ name: 'Price lists (.csv, .xlsx)', extensions: ['csv', 'tsv', 'txt', 'xlsx'] }] });
   if (r.canceled || !r.filePaths.length) return { canceled: true };
   return cl().catalog.pick(r.filePaths[0]);
 }));
