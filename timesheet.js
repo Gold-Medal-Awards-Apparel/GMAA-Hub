@@ -3,7 +3,7 @@
 //  - A signed-in person can only ever read their own hours. Only an admin can read anyone's, add, change or delete hours.
 //  - Times are stored as UTC; pay periods are counted in the computer's local time (the shop's clock).
 const DAY = 86400000;
-const DEFAULT_ANCHOR = '2026-11-02', DEFAULT_DAYS = 14;   // until an admin sets the real pay period
+const DEFAULT_ANCHOR = '2026-10-25', DEFAULT_DAYS = 14;   // until an admin sets the real pay period
 const MAX_SHIFT_MS = 24 * 3600000;
 
 function makeTimesheet({ need, ensure, query, actor, newId, str, verify, isAdmin }) {
