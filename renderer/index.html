@@ -161,7 +161,7 @@ a.ext:hover{color:var(--accent);border-bottom-color:var(--accent)}
 .col{background:#EFEFEF;border-radius:8px;min-height:240px;padding-bottom:8px}
 .colh{padding:8px 10px;border-radius:8px 8px 0 0;font-weight:700;font-size:13px;display:flex;justify-content:space-between}
 .job{background:#fff;margin:8px 8px 0;padding:8px 9px;border-radius:6px;font-size:13px;box-shadow:0 1px 2px rgba(0,0,0,.15);cursor:grab}
-.job .due{font-size:12px;color:var(--muted)}.job .due.late{color:#B3261E;font-weight:700}.job .who{font-size:12px;color:var(--navy2);margin-top:2px}
+.job .due{font-size:14px;font-weight:800;color:var(--navy);margin-top:3px}.job .due.late{color:#B3261E}.job.dl-soon{background:#FFF3CD;box-shadow:0 0 0 2px #D4A13A,0 1px 2px rgba(0,0,0,.15)}.job.dl-hot{background:#FDE2E0;box-shadow:0 0 0 2px #B3261E,0 1px 2px rgba(0,0,0,.15)}.job.dl-hot .due{color:#B3261E}body.tv .job .due{font-size:16px}.job .who{font-size:12px;color:var(--navy2);margin-top:2px}
 .job .jb{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap}.job .jb select{font-size:12px;padding:2px 4px;flex:1 1 90px;min-width:0;max-width:100%}.job .jb .btn{padding:2px 8px;font-size:12px;flex:0 0 auto}.job{overflow:hidden;word-break:break-word}
 .wt{width:100%;border-collapse:collapse;background:#fff}.wt th{background:var(--navy);color:#FFFFFF;text-align:left;padding:6px 8px;font-size:12.5px}.wt td{padding:5px 8px;border-top:1px solid #E6E6E6;font-size:13px}
 .nwrap{display:grid;grid-template-columns:300px 1fr;gap:14px}.nlist{max-height:70vh;overflow:auto}
@@ -221,7 +221,7 @@ tr.cmrow td{background:#FFFBEA;border-top:none}.cmbox{padding:6px 10px 8px;borde
 </head>
 <body>
 <header class="top">
-  <div class="brand"><img src="logo.png" alt="Gold Medal Awards &amp; Apparel"><div><div class="eyebrow">Gold Medal Awards &amp; Apparel &middot; v0.9.9</div><h1>Gold Medal Hub &middot; Order History</h1><div class="sub" id="coverage"></div></div></div>
+  <div class="brand"><img src="logo.png" alt="Gold Medal Awards &amp; Apparel"><div><div class="eyebrow">Gold Medal Awards &amp; Apparel &middot; v0.9.10</div><h1>Gold Medal Hub &middot; Order History</h1><div class="sub" id="coverage"></div></div></div>
   <div class="hdr-right"><button class="btn ghost tabbtn on" id="tabSearch">Search</button><button class="btn ghost tabbtn" id="tabBoard">Order board</button><button class="btn ghost tabbtn" id="tabNotes">Notes</button><button class="btn ghost tabbtn" id="tabUpdates" style="display:none">Job updates</button><button class="btn ghost tabbtn" id="tabPrice">Price check</button><button class="btn ghost tabbtn" id="tabCust">Customers</button><button class="btn ghost tabbtn" id="tabInv">Inventory</button><button class="btn ghost tabbtn" id="tabCat">Catalog</button><button class="btn ghost tabbtn" id="tabTime">Timesheet</button><span id="syncStatus" class="syncstatus"></span><button class="btn ghost" id="syncBtn" title="Get the newest orders from Shopify">Sync new orders</button><button class="btn ghost" id="shopBtn" title="Shopify connection">&#9881;</button><button class="btn ghost" id="updBtn" title="Look for a newer version of the app">Check for updates</button><button class="btn ghost" id="helpBtn">How to search / abbreviations</button></div>
 </header>
 <div id="dueBar" class="duebar" style="display:none"></div>

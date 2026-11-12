@@ -127,6 +127,12 @@
     }
     return out.sort((a, b) => a.days - b.days || (a.j.customer || '').localeCompare(b.j.customer || ''));
   }
+  // Same rule as the banner: unfinished work that is late/due today (red) or due within the warning window (yellow).
+  function cardLevel(j, status) {
+    if (j.archived || !j.due || !/^\d{4}-\d\d-\d\d$/.test(j.due) || status === 'done' || status === 'pickup' || status === 'delivery') return '';
+    const days = Math.round((new Date(j.due + 'T00:00:00') - new Date(new Date().toDateString())) / 86400000);
+    return days < 0 ? 'late' : days === 0 ? 'today' : days <= warnDays() ? 'soon' : '';
+  }
   const dueWords = d => d.days < 0 ? (-d.days) + (d.days === -1 ? ' day' : ' days') + ' late' : d.days === 0 ? 'due today' : d.days === 1 ? 'due tomorrow' : 'due in ' + d.days + ' days';
   const dueName = j => (j.order_ref ? j.order_ref + ' ' : '') + (j.customer || j.title || 'job');
   function notifyDue(list) {   // one Windows notification per job, per level, per day, on this computer
@@ -160,7 +166,8 @@
     if (!j.due) return '';
     const days = Math.round((new Date(j.due + 'T00:00:00') - new Date(new Date().toDateString())) / 86400000);
     const [y, m, d] = j.due.split('-'); const late = days < 0;
-    return '<div class="due' + (late ? ' late' : '') + '">Due ' + m + '/' + d + (late ? ' · ' + (-days) + ' day' + (days === -1 ? '' : 's') + ' late' : days === 0 ? ' · today' : days === 1 ? ' · tomorrow' : '') + '</div>';
+    const dow = new Date(+y, +m - 1, +d).toLocaleDateString('en-US', { weekday: 'short' });
+    return '<div class="due' + (late ? ' late' : '') + '">Due ' + dow + ' ' + m + '/' + d + (late ? ' · ' + (-days) + ' day' + (days === -1 ? '' : 's') + ' late' : days === 0 ? ' · today' : days === 1 ? ' · tomorrow' : '') + '</div>';
   }
   function cards() {
     const out = [];
@@ -179,7 +186,7 @@
       const list = vis.filter(x => x.status === c[0]).sort((a, b) => (a.j.due || '9999').localeCompare(b.j.due || '9999'));
       return '<div class="col" data-col="' + c[0] + '"><div class="colh" style="background:' + c[2] + ';color:' + c[3] + '">' + c[1] + ' <span>' + list.length + '</span></div>' +
         list.map(x => { const j = x.j, s = secOf(j), others = SECS.filter(([k]) => k !== x.key && s[k] && s[k] !== 'done'), nc = noteCount(j.id);
-          return '<div class="job" draggable="' + (st.tv ? 'false' : 'true') + '" data-id="' + esc(j.id) + '" data-key="' + x.key + '" style="border-left:6px solid ' + c[2] + '">' + (showChip ? '<span class="chip">' + esc(SECNAME[x.key]) + '</span>' : '') + '<b>' + esc(j.order_ref || '') + (j.order_ref && j.customer ? ' · ' : '') + esc(j.customer) + '</b>' + (nc ? ' <span class="nc" title="' + nc + ' job note' + (nc === 1 ? '' : 's') + '">📝' + nc + '</span>' : '') + '<div>' + esc(j.title) + '</div>' + dueInfo(j) + (st.tv ? assignSel(j, x.key) : '') +
+          const lv = cardLevel(j, x.status); return '<div class="job' + (lv ? ' dl-' + (lv === 'soon' ? 'soon' : 'hot') : '') + '" draggable="' + (st.tv ? 'false' : 'true') + '" data-id="' + esc(j.id) + '" data-key="' + x.key + '" style="border-left:6px solid ' + c[2] + '">' + (showChip ? '<span class="chip">' + esc(SECNAME[x.key]) + '</span>' : '') + '<b>' + esc(j.order_ref || '') + (j.order_ref && j.customer ? ' · ' : '') + esc(j.customer) + '</b>' + (nc ? ' <span class="nc" title="' + nc + ' job note' + (nc === 1 ? '' : 's') + '">📝' + nc + '</span>' : '') + '<div>' + esc(j.title) + '</div>' + dueInfo(j) + (st.tv ? assignSel(j, x.key) : '') +
             (others.length ? '<div class="also">Also: ' + others.map(([k, n]) => esc(n) + (assignOf(j)[k] ? ' – ' + esc(assignOf(j)[k]) : '') + ' (' + esc(STNAME[s[k]] || s[k]) + ')').join(', ') + '</div>' : '') +
             '<div class="jb"><select data-act="move" data-id="' + esc(j.id) + '" data-key="' + x.key + '">' + COLS.map(y => '<option value="' + y[0] + '"' + (y[0] === x.status ? ' selected' : '') + '>' + (y[0] === x.status ? 'Move…' : '→ ' + y[1]) + '</option>').join('') + '</select>' +
             (x.status === 'pickup' || x.status === 'delivery' ? ' <button class="btn" data-act="done" data-id="' + esc(j.id) + '" data-key="' + x.key + '">Finished</button>' : '') + (st.tv ? '' : '<div class="jrow">' + assignSel(j, x.key) + '</div>') + '</div></div>'; }).join('') + '</div>';
