@@ -1,7 +1,7 @@
 {
   "name": "order-history-search",
   "productName": "Gold Medal Hub",
-  "version": "0.9.8",
+  "version": "0.9.9",
   "description": "Gold Medal Awards & Apparel (GMAA) - internal hub: order history search",
   "main": "main.js",
   "scripts": {
@@ -23,6 +23,7 @@
       "preload.js",
       "cloud.js",
       "catalog.js",
+      "timesheet.js",
       "sync.js",
       "renderer/**",
       "assets/**",

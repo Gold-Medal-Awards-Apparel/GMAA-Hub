@@ -109,7 +109,7 @@
     const s=document.createElement('script'); s.src='app.js'; document.body.appendChild(s);
     s.onload=async()=>{
       try{ const o=JSON.parse(sessionStorage.getItem('gmRestore')||'null'); if(o&&o.q&&Date.now()-o.at<90000&&$('q')){ $('q').value=o.q; $('q').dispatchEvent(new Event('input',{bubbles:true})); } }catch(e){}
-      const cs=document.createElement('script'); cs.src='customers.js'; document.body.appendChild(cs); const ps=document.createElement('script'); ps.src='pricecheck.js'; document.body.appendChild(ps); const ws=document.createElement('script'); ws.src='workboard.js'; ws.onload=()=>{ const is=document.createElement('script'); is.src='inventory.js'; is.onload=()=>{ const cv=document.createElement('script'); cv.src='catalogview.js'; document.body.appendChild(cv); }; document.body.appendChild(is); }; document.body.appendChild(ws);
+      const cs=document.createElement('script'); cs.src='customers.js'; document.body.appendChild(cs); const ps=document.createElement('script'); ps.src='pricecheck.js'; document.body.appendChild(ps); const ws=document.createElement('script'); ws.src='workboard.js'; ws.onload=()=>{ const is=document.createElement('script'); is.src='inventory.js'; is.onload=()=>{ const cv=document.createElement('script'); cv.src='catalogview.js'; cv.onload=()=>{ const tv=document.createElement('script'); tv.src='timesheet.js'; document.body.appendChild(tv); }; document.body.appendChild(cv); }; document.body.appendChild(is); }; document.body.appendChild(ws);
       const st=await refreshStatus();
       if(st.configured){ const stale=!st.syncedAt || (Date.now()-new Date(st.syncedAt))>6*3600*1000; if(stale||st.needsComments) doSync(true); }   // auto-sync on open if older than 6 hours
     };

@@ -208,6 +208,7 @@ body.tv .wv h3.sech{font-size:22px;background:#292929;border-left:8px solid var(
 .srow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.srow input,.srow select{flex:1 1 130px}.srow .chk{font-weight:400;margin:0;display:flex;gap:4px;align-items:center}
 .secrow{display:grid;grid-template-columns:150px 1fr 1fr;gap:8px}.secrow select{width:100%}
 body.tv .job .who{font-size:14px;color:var(--navy2)}
+#tsView{padding:0 0 30px}#tsView .wbar{display:flex;align-items:center;gap:10px;margin:6px 0}#tsView .grow,.wmodal .grow{flex:1}#tsView .note{color:var(--muted);font-size:13px;margin:8px 0}#tsView .muted{color:var(--muted);font-size:12.5px}#tsView table.tst{width:100%;border-collapse:collapse;background:#fff}#tsView .tst th{background:var(--navy);color:#fff;text-align:left;padding:6px 8px;font-size:12.5px}#tsView .tst td{padding:6px 8px;border-top:1px solid #E6E6E6;vertical-align:top}#tsView .tst .n{text-align:right;white-space:nowrap}#tsView select,#tsView input[type=password]{font-size:15px;padding:6px 10px;border:2px solid var(--line);border-radius:10px;background:#fff}
 #catView{padding:0 0 30px}#catView .wbar{display:flex;align-items:center;gap:10px;margin:6px 0}#catView .grow,.wmodal .grow{flex:1}#catView .note,.wmodal .note{color:var(--muted);font-size:13px;margin:8px 0}
 #catView form.searchbox select{font-size:15px;padding:0 10px;border:2px solid var(--line);border-radius:10px;background:#fff}
 #catView table.res{margin-top:10px;width:100%}#catView td.sku{white-space:nowrap}#catView td.pr{white-space:nowrap}#catView .cp{display:flex;gap:10px;justify-content:space-between}#catView .cp span{color:var(--muted)}#catView .muted,.wmodal .muted{color:var(--muted);font-size:12.5px}
@@ -220,8 +221,8 @@ tr.cmrow td{background:#FFFBEA;border-top:none}.cmbox{padding:6px 10px 8px;borde
 </head>
 <body>
 <header class="top">
-  <div class="brand"><img src="logo.png" alt="Gold Medal Awards &amp; Apparel"><div><div class="eyebrow">Gold Medal Awards &amp; Apparel &middot; v0.9.8</div><h1>Gold Medal Hub &middot; Order History</h1><div class="sub" id="coverage"></div></div></div>
-  <div class="hdr-right"><button class="btn ghost tabbtn on" id="tabSearch">Search</button><button class="btn ghost tabbtn" id="tabBoard">Order board</button><button class="btn ghost tabbtn" id="tabNotes">Notes</button><button class="btn ghost tabbtn" id="tabUpdates" style="display:none">Job updates</button><button class="btn ghost tabbtn" id="tabPrice">Price check</button><button class="btn ghost tabbtn" id="tabCust">Customers</button><button class="btn ghost tabbtn" id="tabInv">Inventory</button><button class="btn ghost tabbtn" id="tabCat">Catalog</button><span id="syncStatus" class="syncstatus"></span><button class="btn ghost" id="syncBtn" title="Get the newest orders from Shopify">Sync new orders</button><button class="btn ghost" id="shopBtn" title="Shopify connection">&#9881;</button><button class="btn ghost" id="updBtn" title="Look for a newer version of the app">Check for updates</button><button class="btn ghost" id="helpBtn">How to search / abbreviations</button></div>
+  <div class="brand"><img src="logo.png" alt="Gold Medal Awards &amp; Apparel"><div><div class="eyebrow">Gold Medal Awards &amp; Apparel &middot; v0.9.9</div><h1>Gold Medal Hub &middot; Order History</h1><div class="sub" id="coverage"></div></div></div>
+  <div class="hdr-right"><button class="btn ghost tabbtn on" id="tabSearch">Search</button><button class="btn ghost tabbtn" id="tabBoard">Order board</button><button class="btn ghost tabbtn" id="tabNotes">Notes</button><button class="btn ghost tabbtn" id="tabUpdates" style="display:none">Job updates</button><button class="btn ghost tabbtn" id="tabPrice">Price check</button><button class="btn ghost tabbtn" id="tabCust">Customers</button><button class="btn ghost tabbtn" id="tabInv">Inventory</button><button class="btn ghost tabbtn" id="tabCat">Catalog</button><button class="btn ghost tabbtn" id="tabTime">Timesheet</button><span id="syncStatus" class="syncstatus"></span><button class="btn ghost" id="syncBtn" title="Get the newest orders from Shopify">Sync new orders</button><button class="btn ghost" id="shopBtn" title="Shopify connection">&#9881;</button><button class="btn ghost" id="updBtn" title="Look for a newer version of the app">Check for updates</button><button class="btn ghost" id="helpBtn">How to search / abbreviations</button></div>
 </header>
 <div id="dueBar" class="duebar" style="display:none"></div>
 <main>
@@ -321,6 +322,7 @@ tr.cmrow td{background:#FFFBEA;border-top:none}.cmbox{padding:6px 10px 8px;borde
 <section id="priceView"></section>
 <section id="invView" class="wv"></section>
 <section id="catView" class="wv"></section>
+<section id="tsView" class="wv"></section>
 <section id="boardView" class="wv"></section><section id="notesView" class="wv"></section><section id="updatesView" class="wv"></section>
 <script src="cust-logic.js"></script>
 <script src="boot.js"></script>

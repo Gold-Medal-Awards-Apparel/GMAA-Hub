@@ -21,6 +21,9 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS inv_moves (id TEXT PRIMARY KEY, at TEXT NOT NULL, by TEXT NOT NULL DEFAULT '', item_id TEXT NOT NULL DEFAULT '', stock_id TEXT NOT NULL DEFAULT '', code TEXT NOT NULL DEFAULT '', label TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT '', delta INTEGER NOT NULL DEFAULT 0, qty_after INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '')",
   "CREATE TABLE IF NOT EXISTS cat_suppliers (name TEXT PRIMARY KEY COLLATE NOCASE, list_date TEXT NOT NULL DEFAULT '', labels TEXT NOT NULL DEFAULT '[]', n INTEGER NOT NULL DEFAULT 0, gen INTEGER NOT NULL DEFAULT 0, file_name TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '', updated_by TEXT NOT NULL DEFAULT '')",
   "CREATE TABLE IF NOT EXISTS cat_chunks (supplier TEXT NOT NULL COLLATE NOCASE, gen INTEGER NOT NULL, idx INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY (supplier, gen, idx))",
+  "CREATE TABLE IF NOT EXISTS time_entries (id TEXT PRIMARY KEY, person TEXT NOT NULL COLLATE NOCASE, clock_in TEXT NOT NULL, clock_out TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '', edited_by TEXT NOT NULL DEFAULT '', edited_at TEXT NOT NULL DEFAULT '', deleted INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)",
+  "CREATE UNIQUE INDEX IF NOT EXISTS ux_time_open ON time_entries(person) WHERE clock_out='' AND deleted=0",
+  "CREATE INDEX IF NOT EXISTS idx_time_in ON time_entries(clock_in)",
   "CREATE INDEX IF NOT EXISTS idx_inv_items_code ON inv_items(code)",
   "CREATE INDEX IF NOT EXISTS idx_inv_stock_item ON inv_stock(item_id)",
   "CREATE INDEX IF NOT EXISTS idx_inv_moves_at ON inv_moves(at)",
@@ -121,7 +124,8 @@ function makeCloud({ dir, safeStorage, baseUrl }) {
     const hits = await Promise.all(rows.map(async r => { const a = Buffer.from(await hashPinAsync(pin, r.salt), 'hex'), b = Buffer.from(r.hash, 'hex'); return a.length === b.length && crypto.timingSafeEqual(a, b) ? r : null; }));
     return hits.find(Boolean) || null;
   }
-  async function login(pin) {
+  // Checks a PIN with the shared lockout rules. Returns { row } for the person it belongs to, or an error object.
+  async function verify(pin) {
     const c = need(); await ensure(c);
     if (lock.until > Date.now()) { const w = Math.ceil((lock.until - Date.now()) / 1000); return { error: 'Too many wrong PINs.', locked: true, waitSec: w }; }
     let row = await findPin(pin, await loadStaff(c));
@@ -131,8 +135,13 @@ function makeCloud({ dir, safeStorage, baseUrl }) {
       if (left <= 0) { lock.n = 0; lock.locks++; const ms = lock.locks >= 3 ? 15 * 60000 : 60000; lock.until = Date.now() + ms; return { error: 'Incorrect PIN.', locked: true, waitSec: Math.round(ms / 1000) }; }
       return { error: 'Incorrect PIN.', triesLeft: left };
     }
-    lock.n = 0; lock.locks = 0; session = { name: row.name, admin: !!row.is_admin, last: Date.now() };
-    return { ok: true, user: row.name, admin: !!row.is_admin };
+    lock.n = 0; lock.locks = 0;
+    return { row };
+  }
+  async function login(pin) {
+    const v = await verify(pin); if (!v.row) return v;
+    session = { name: v.row.name, admin: !!v.row.is_admin, last: Date.now() };
+    return { ok: true, user: v.row.name, admin: !!v.row.is_admin };
   }
   function samePin(pin, row) { const a = Buffer.from(hashPin(pin, row.salt), 'hex'), b = Buffer.from(row.hash, 'hex'); return a.length === b.length && crypto.timingSafeEqual(a, b); }
   async function pinTakenBy(c, pin, exceptName) { const rows = (await query(c, 'SELECT * FROM staff')).rows; const r = rows.find(x => (!exceptName || x.name.toLowerCase() !== String(exceptName).toLowerCase()) && samePin(pin, x)); return r ? r.name : ''; }
@@ -411,6 +420,7 @@ function makeCloud({ dir, safeStorage, baseUrl }) {
   }
   function status() { const c = loadCreds(); return { configured: !!c, accountId: c ? c.accountId : '', databaseId: c ? c.databaseId : '' }; }
   const catalog = require('./catalog.js').makeCatalog({ need, ensure, query, actor, newId, str, dir });
-  return { catalog, loadCreds, saveCreds, clearCreds, test, pull, cached, authState, login, logout, ping, addStaff, setPin, removeStaff, setAdmin, updates, saveNote, deleteNote, saveJob, moveSection, setAssign, deleteJob, archiveJob, addJobNote, saveSetting, status, query, invPull, invMove, invSaveItem, invSaveStock, invDelete, invMoves, invImport };
+  const timesheet = require('./timesheet.js').makeTimesheet({ need, ensure, query, actor, newId, str, verify });
+  return { catalog, timesheet, loadCreds, saveCreds, clearCreds, test, pull, cached, authState, login, logout, ping, addStaff, setPin, removeStaff, setAdmin, updates, saveNote, deleteNote, saveJob, moveSection, setAssign, deleteJob, archiveJob, addJobNote, saveSetting, status, query, invPull, invMove, invSaveItem, invSaveStock, invDelete, invMoves, invImport };
 }
 module.exports = { makeCloud, STATUSES, SECTIONS };
