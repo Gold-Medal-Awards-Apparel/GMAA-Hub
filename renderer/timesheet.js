@@ -55,7 +55,7 @@
   // ---------- my hours ----------
   function entryRows(list, now, admin) {
     if (!list.length) return '<tr><td colspan="' + (admin ? 7 : 6) + '" class="muted" style="padding:12px">No hours in this pay period.</td></tr>';
-    return list.map(e => '<tr>' + (admin ? '<td><b>' + esc(e.person) + '</b></td>' : '') + '<td>' + esc(fdate(e.in)) + '</td><td>' + esc(ftime(e.in)) + '</td><td>' + (e.out ? esc(ftime(e.out) + (new Date(e.out).toDateString() !== new Date(e.in).toDateString() ? ' (' + fdate(e.out) + ')' : '')) : '<span class="up" style="color:#067647"><b>still clocked in</b></span>') + '</td><td class="n">' + hm(mins(e, now)) + '</td><td class="n">' + dec(mins(e, now)) + '</td><td>' + esc(e.note) + (e.edited_by ? ' <span class="muted">(edited by ' + esc(e.edited_by) + ')</span>' : '') + (admin ? ' <button class="btn" data-a="edit" data-id="' + esc(e.id) + '">Edit</button>' : '') + '</td></tr>').join('');
+    return list.map(e => '<tr>' + (admin ? '<td><b>' + esc(e.person) + '</b></td>' : '') + '<td>' + esc(fdate(e.in)) + '</td><td>' + esc(ftime(e.in)) + '</td><td>' + (e.out ? esc(ftime(e.out) + (new Date(e.out).toDateString() !== new Date(e.in).toDateString() ? ' (' + fdate(e.out) + ')' : '')) : (mins(e, now) > 12 * 60 ? '<span style="color:#B42318"><b>never clocked out</b></span>' : '<span style="color:#067647"><b>still clocked in</b></span>')) + '</td><td class="n">' + hm(mins(e, now)) + '</td><td class="n">' + dec(mins(e, now)) + '</td><td>' + esc(e.note) + (e.edited_by ? ' <span class="muted">(edited by ' + esc(e.edited_by) + ')</span>' : '') + (admin ? ' <button class="btn" data-a="edit" data-id="' + esc(e.id) + '">Edit</button>' : '') + '</td></tr>').join('');
   }
   function nav(p) {
     return '<div class="srow" style="margin:8px 0;gap:8px"><button class="btn" data-a="prev">&larr; Earlier</button><b>' + esc(pname(p.offset)) + ': ' + esc(rng(p)) + '</b><button class="btn" data-a="next"' + (p.offset >= 0 ? ' disabled' : '') + '>Later &rarr;</button></div>';
@@ -85,7 +85,7 @@
     const list = who ? d.entries.filter(e => e.person.toLowerCase() === who.toLowerCase()) : d.entries;
     const names = Array.from(new Set(d.staff.map(s => s.name).concat(d.entries.map(e => e.person))));
     const tot = names.map(n => ({ n, m: d.totals[n.toLowerCase()] || 0 })), grand = tot.reduce((a, x) => a + x.m, 0);
-    const clockedIn = d.open.length ? '<div class="note"><b>Clocked in right now:</b> ' + d.open.map(o => esc(o.person) + ' since ' + esc(ftime(o.in))).join(', ') + '</div>' : '';
+    const clockedIn = d.open.length ? '<div class="card" style="margin:8px 0;background:' + (d.open.some(o => mins(o, now) > 12 * 60) ? '#FDE2E0' : '#FFF3CD') + '"><b>Still clocked in:</b> ' + d.open.map(o => { const long = mins(o, now) > 12 * 60; return '<span style="display:inline-block;margin:3px 10px 3px 0">' + esc(o.person) + ' since ' + esc(fdate(o.in) + ' ' + ftime(o.in)) + (long ? ' <b style="color:#B42318">(' + hm(mins(o, now)) + ' - forgot to clock out?)</b>' : '') + ' <button class="btn" data-a="edit" data-id="' + esc(o.id) + '">' + (long ? 'Fix: set clock-out time' : 'Edit') + '</button></span>'; }).join('') + '</div>' : '';
     return nav(d.period) + clockedIn +
       '<div class="srow" style="gap:8px;margin:6px 0"><select id="tsWho"><option value="">All employees</option>' + names.map(n => '<option' + (n === who ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + '</select><span class="grow"></span><button class="btn" data-a="add">+ Add missing hours</button><button class="btn" data-a="csv">Save as spreadsheet</button><button class="btn" data-a="payset">Pay period…</button></div>' +
       '<table class="wt tst" style="max-width:520px"><tr><th>Employee</th><th class="n">Time</th><th class="n">Hours</th></tr>' + tot.map(x => '<tr><td>' + esc(x.n) + '</td><td class="n">' + hm(x.m) + '</td><td class="n">' + dec(x.m) + '</td></tr>').join('') + '<tr><td><b>Everyone</b></td><td class="n"><b>' + hm(grand) + '</b></td><td class="n"><b>' + dec(grand) + '</b></td></tr></table>' +
@@ -111,7 +111,7 @@
     openModal('<h3 style="margin:0 0 6px">' + (e ? 'Edit hours' : 'Add missing hours') + '</h3>' +
       '<label>Employee</label><select id="tfWho">' + names.map(n => '<option' + (e && e.person.toLowerCase() === n.toLowerCase() ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + '</select>' +
       '<label>Clocked in</label><input id="tfIn" type="datetime-local" value="' + esc(e ? local(e.in) : '') + '" max="' + nowL + '">' +
-      '<label>Clocked out <span class="muted">(leave empty if they are still on the clock)</span></label><input id="tfOut" type="datetime-local" value="' + esc(e && e.out ? local(e.out) : '') + '" max="' + nowL + '">' +
+      (e && !e.out ? '<div class="note" style="color:#B42318"><b>This person is still clocked in.</b> Type the time they actually left in "Clocked out" below.</div>' : '') + '<label>Clocked out <span class="muted">(leave empty only if they are still on the clock)</span></label><input id="tfOut" type="datetime-local" value="' + esc(e && e.out ? local(e.out) : '') + '" max="' + nowL + '">' +
       '<label>Note <span class="muted">(why it was changed)</span></label><input id="tfNote" maxlength="300" value="' + esc(e ? e.note : '') + '">' +
       '<div class="srow" style="margin-top:12px;gap:8px"><button class="btn primary" data-a="tsave" data-id="' + esc(e ? e.id : '') + '">Save</button>' + (e ? '<button class="btn" data-a="tdel" data-id="' + esc(e.id) + '" style="color:#B42318">Delete entry</button>' : '') + '<span class="grow"></span><button class="btn" data-a="tclose">Cancel</button></div><div class="note" id="tfMsg" style="min-height:18px"></div>');
   }
@@ -139,7 +139,7 @@
     else if (a === 'next') { if (S.off < 0) { S.off++; reload(); } }
     else if (a === 'reload') reload();
     else if (a === 'add') entryForm(null);
-    else if (a === 'edit') { const x = S.all.entries.find(z => z.id === t.dataset.id); if (x) entryForm(x); }
+    else if (a === 'edit') { const x = S.all.entries.find(z => z.id === t.dataset.id) || S.all.open.find(z => z.id === t.dataset.id); if (x) entryForm(x); }
     else if (a === 'payset') periodForm();
     else if (a === 'csv') csv();
     else if (a === 'tclose') closeModal();
