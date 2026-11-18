@@ -91,6 +91,7 @@ ipcMain.handle('inv:saveStock', cloudWrap(l => cl().invSaveStock(l)));
 ipcMain.handle('inv:delete', cloudWrap((k, id) => cl().invDelete(k, id)));
 ipcMain.handle('inv:moves', cloudWrap((n, id) => cl().invMoves(n, id)));
 ipcMain.handle('inv:import', cloudWrap(async () => { let seed; for (const d of [DATA_DIR(), __dirname]) { try { seed = JSON.parse(fs.readFileSync(path.join(d, 'inventory-seed.json'), 'utf8')); break; } catch (e) {} } if (!seed) return { error: 'The starter list file (inventory-seed.json) was not found. Put it in the app folder or in ' + DATA_DIR() + ' and try again.' }; return cl().invImport(seed); }));
+ipcMain.handle('board:drafts', cloudWrap(() => cl().syncDrafts(nums => sy().draftStatus(nums))));
 ipcMain.handle('ts:clock', cloudWrap((pin, kind) => cl().timesheet.clock(pin, kind)));
 ipcMain.handle('ts:mine', cloudWrap(o => cl().timesheet.mine(o)));
 ipcMain.handle('ts:all', cloudWrap(o => cl().timesheet.all(o)));

@@ -85,6 +85,16 @@
     if (isRecipient()) { const u = await window.api.getUpdates(); if (u && u.rows) { st.updates = u.rows; st.updatesNew = u.rows.filter(x => x.at > seenAt(':updates') && x.by !== who()).length; } }
     paintTop(); paintDue(true);
     if (!quiet || !st.editing) draw();
+    checkDrafts();
+  }
+  // Jobs entered with a draft number (D126) switch to the real order number once Shopify turns the draft into an order.
+  const isDraftRef = v => /^\s*(?:draft\s*)?#?\s*D\s*\d+\s*$/i.test(v || '');
+  let lastDraft = 0;
+  async function checkDrafts() {
+    if (st.tv && false) return;
+    if (!(st.jobs || []).some(j => isDraftRef(j.order_ref)) || Date.now() - lastDraft < 90000) return;
+    lastDraft = Date.now();
+    try { const r = await window.api.syncDrafts(); if (r && r.changed) { if (!st.editing) { await pull(true); } toast(r.changed + ' draft order' + (r.changed === 1 ? '' : 's') + ' became real orders. Order numbers updated.'); } } catch (e) {}
   }
   async function write(fn, okMsg) {   // runs a change; asks for the PIN first if needed, then shows any message
     if (!(await ensureAuth())) return null;
@@ -216,7 +226,7 @@
   function jobModal(j) {
     const names = staffNames(), sec = secOf(j), asg = assignOf(j);
     return '<div class="wmodal"><div class="wbox" style="width:min(680px,96vw)"><h3>' + (j.id ? 'Edit job' : 'New job') + '</h3>' +
-      '<label>Order # (optional) <span style="color:var(--muted);font-weight:400">type the number and press Enter — customer and items fill in</span></label><div style="display:flex;gap:6px"><input id="jRef" value="' + esc(j.order_ref) + '" style="flex:1"><button class="btn" data-act="lookup">Look up</button></div>' +
+      '<label>Order # (optional) <span style="color:var(--muted);font-weight:400">type the number (or a draft like D126) and press Enter — customer and items fill in</span></label><div style="display:flex;gap:6px"><input id="jRef" value="' + esc(j.order_ref) + '" style="flex:1"><button class="btn" data-act="lookup">Look up</button></div>' +
       '<label>Customer</label><input id="jCust" value="' + esc(j.customer) + '">' +
       '<label>Job</label><input id="jTitle" value="' + esc(j.title) + '" placeholder="e.g. 40 homecoming shirts, 2 colors">' +
       '<label>Sections — tick every department this order goes through, and who is on each</label><div class="secpick">' + SECS.map(([k, n]) => '<div class="secrow"><label><input type="checkbox" id="sc_' + k + '" data-act="secchk" data-key="' + k + '"' + (sec[k] ? ' checked' : '') + '> ' + n + '</label><select id="ss_' + k + '"' + (sec[k] ? '' : ' disabled') + '>' + COLS.map(c => '<option value="' + c[0] + '"' + (sec[k] === c[0] ? ' selected' : '') + '>' + c[1] + '</option>').join('') + '<option value="done"' + (sec[k] === 'done' ? ' selected' : '') + '>Finished</option></select><select id="sa_' + k + '"' + (sec[k] ? '' : ' disabled') + '><option value="">👤 unassigned</option>' + names.map(x => '<option' + (x === asg[k] ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select></div>').join('') + '</div>' +
@@ -259,12 +269,13 @@
     return o;
   }
   async function lookupOrder(ref) {
-    const wantOld = /old/i.test(ref);
+    const wantOld = /old/i.test(ref), isDraft = isDraftRef(ref);
     if (!wantOld) {
       const r = await window.api.shopifyOrder(ref);
       if (r && r.ok && r.found) return fromShopify(r);
-      if (r && r.error && !/not connected/i.test(r.error)) toast(r.error + ' Trying the saved order history instead.');
+      if (r && r.error && !/not connected/i.test(r.error)) toast(r.error + (isDraft ? '' : ' Trying the saved order history instead.'));
     }
+    if (isDraft) return null;   // drafts only exist in Shopify; never match them to an old-store order number
     return fromLocal(ref);
   }
   async function doLookup() {

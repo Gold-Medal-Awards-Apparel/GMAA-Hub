@@ -298,6 +298,22 @@ function makeCloud({ dir, safeStorage, baseUrl }) {
     try { await query(c, 'INSERT INTO activity (id,at,by,job_id,ref,text) VALUES (?,?,?,?,?,?)', [newId(), new Date().toISOString(), str(by, 60), str(job.id, 40), str(job.order_ref || job.title, 60), str(text, 400)]); } catch (e) {}
   }
   const lab = j => ((j.order_ref || '').trim() || (j.title || '').trim() || 'a job') + (j.customer ? ' (' + j.customer + ')' : '');
+  // Draft orders on the board: when Shopify turns a draft (#D126) into a real order (#1153), change the job's order number to match.
+  async function syncDrafts(statusFn) {
+    const c = need(); await ensure(c);
+    const isDraft = v => /^\s*(?:draft\s*)?#?\s*D\s*\d+\s*$/i.test(v || '');
+    const rows = (await query(c, "SELECT id, order_ref, customer, title FROM jobs WHERE deleted=0")).rows.filter(r => isDraft(r.order_ref));
+    if (!rows.length) return { checked: 0, changed: 0 };
+    const nums = rows.map(r => parseInt(String(r.order_ref).replace(/\D/g, ''), 10));
+    const done = await statusFn(nums); let changed = 0;
+    for (const r of rows) {
+      const hit = done[parseInt(String(r.order_ref).replace(/\D/g, ''), 10)]; if (!hit) continue;
+      const now = new Date().toISOString(), ref = 'New #' + hit.order;
+      const u = await query(c, 'UPDATE jobs SET order_ref=?, updated_at=?, updated_by=? WHERE id=? AND order_ref=?', [ref, now, 'Shopify', r.id, r.order_ref]);
+      if (u.changes) { changed++; await log(c, 'Shopify', { id: r.id, order_ref: ref, title: r.title }, r.order_ref.trim() + ' became order ' + ref + (r.customer ? ' (' + r.customer + ')' : '')); }
+    }
+    return { checked: rows.length, changed };
+  }
   async function updates() {
     const c = need(); await ensure(c);
     const to = ((await query(c, "SELECT v FROM settings WHERE k='updates_to'")).rows[0] || {}).v || '';
@@ -421,6 +437,6 @@ function makeCloud({ dir, safeStorage, baseUrl }) {
   function status() { const c = loadCreds(); return { configured: !!c, accountId: c ? c.accountId : '', databaseId: c ? c.databaseId : '' }; }
   const catalog = require('./catalog.js').makeCatalog({ need, ensure, query, actor, newId, str, dir });
   const timesheet = require('./timesheet.js').makeTimesheet({ need, ensure, query, actor, newId, str, verify });
-  return { catalog, timesheet, loadCreds, saveCreds, clearCreds, test, pull, cached, authState, login, logout, ping, addStaff, setPin, removeStaff, setAdmin, updates, saveNote, deleteNote, saveJob, moveSection, setAssign, deleteJob, archiveJob, addJobNote, saveSetting, status, query, invPull, invMove, invSaveItem, invSaveStock, invDelete, invMoves, invImport };
+  return { syncDrafts, catalog, timesheet, loadCreds, saveCreds, clearCreds, test, pull, cached, authState, login, logout, ping, addStaff, setPin, removeStaff, setAdmin, updates, saveNote, deleteNote, saveJob, moveSection, setAssign, deleteJob, archiveJob, addJobNote, saveSetting, status, query, invPull, invMove, invSaveItem, invSaveStock, invDelete, invMoves, invImport };
 }
 module.exports = { makeCloud, STATUSES, SECTIONS };

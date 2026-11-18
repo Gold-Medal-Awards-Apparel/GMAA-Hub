@@ -143,8 +143,52 @@ function makeSync({ dir, safeStorage, baseUrl }) {
       lineItems(first:60){ nodes{ name quantity sku } }
     } }
   }`;
+  // ---- Draft orders (quotes). A draft is named like #D126; when it is completed Shopify gives it a real order number. ----
+  const draftNum = v => { const m = /^\s*(?:draft\s*)?#?\s*D\s*(\d+)\s*$/i.exec(String(v || '')); return m ? parseInt(m[1], 10) : 0; };
+  const DQUERY = `query($q:String){
+    draftOrders(first:5, query:$q){ nodes{
+      name status createdAt note2
+      customer{ firstName lastName defaultAddress{ company } }
+      billingAddress{ name company }
+      shippingLine{ title }
+      totalPriceSet{ shopMoney{ amount } }
+      lineItems(first:60){ nodes{ name quantity sku } }
+      order{ name displayFinancialStatus displayFulfillmentStatus cancelledAt }
+    } }
+  }`;
+  async function findDraft(c, token, n) {
+    const d = await gql(c, token, { q: 'D' + n }, DQUERY);
+    return ((d.draftOrders && d.draftOrders.nodes) || []).find(x => parseInt(String(x.name).replace(/\D/g, ''), 10) === n) || null;
+  }
+  async function lookupDraft(n) {
+    const c = loadCreds();
+    if (!c) throw new Error('Shopify is not connected yet.');
+    const token = await getToken(c);
+    const o = await findDraft(c, token, n);
+    if (!o) return { found: false };
+    const cu = o.customer || {}, ba = o.billingAddress || {};
+    const cust = ([cu.firstName, cu.lastName].filter(Boolean).join(' ') || ba.name || '').trim();
+    const co = (ba.company || (cu.defaultAddress && cu.defaultAddress.company) || '').trim();
+    const done = o.status === 'COMPLETED' && o.order && o.order.name;
+    return { found: true, tag: done ? 'New #' + parseInt(String(o.order.name).replace(/\D/g, ''), 10) : 'Draft #D' + n, cust, co, created: localDate(o.createdAt), note: o.note2 || '', cancelled: !!(o.order && o.order.cancelledAt),
+      paid: done ? (o.order.displayFinancialStatus || '') : 'Draft - not an order yet', fulfillment: done ? (o.order.displayFulfillmentStatus || '') : '',
+      shipping: (o.shippingLine && o.shippingLine.title) || '', total: num(o.totalPriceSet && o.totalPriceSet.shopMoney.amount),
+      items: ((o.lineItems && o.lineItems.nodes) || []).map(li => ({ name: String(li.name || '').trim(), qty: li.quantity || 0, sku: li.sku || '' })) };
+  }
+  // For a list of draft numbers: which have become real orders? Returns { 126: { order: 1153 }, ... } for those that did.
+  async function draftStatus(nums) {
+    const c = loadCreds(); if (!c) throw new Error('Shopify is not connected yet.');
+    const token = await getToken(c), out = {};
+    for (const n of Array.from(new Set(nums)).slice(0, 40)) {
+      const o = await findDraft(c, token, n);
+      if (o && o.status === 'COMPLETED' && o.order && o.order.name) out[n] = { order: parseInt(String(o.order.name).replace(/\D/g, ''), 10) };
+    }
+    return out;
+  }
+
   // Live lookup of one order by its number, straight from Shopify (works for orders newer than the last sync).
   async function lookupOrder(numStr) {
+    const dn = draftNum(numStr); if (dn) return lookupDraft(dn);
     const n = parseInt(String(numStr).replace(/\D/g, ''), 10);
     if (!n) throw new Error('Type the order number first.');
     const c = loadCreds();
@@ -243,6 +287,6 @@ function makeSync({ dir, safeStorage, baseUrl }) {
     return { c, co, r, cm, store: handle, newOrders: Object.keys(s.orders).length };
   }
 
-  return { loadCreds, saveCreds, clearCreds, getToken, sync, lookupOrder, syncProducts, loadProducts, status, merge, normShop };
+  return { loadCreds, saveCreds, clearCreds, getToken, sync, lookupOrder, draftStatus, draftNum, syncProducts, loadProducts, status, merge, normShop };
 }
 module.exports = { makeSync, normShop };

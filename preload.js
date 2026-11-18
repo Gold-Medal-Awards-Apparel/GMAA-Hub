@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('api', {
   cloudDisconnect: () => ipcRenderer.invoke('cloud:disconnect'),
   cloudPull: (arch) => ipcRenderer.invoke('cloud:pull', arch),
   cloudCached: () => ipcRenderer.invoke('cloud:cached'),
+  syncDrafts: () => ipcRenderer.invoke('board:drafts'),
   tsClock: (pin, kind) => ipcRenderer.invoke('ts:clock', pin, kind),
   tsMine: (o) => ipcRenderer.invoke('ts:mine', o),
   tsAll: (o) => ipcRenderer.invoke('ts:all', o),
