@@ -425,7 +425,7 @@ function appendMore(n){
 }
 
 /* ---------- actions ---------- */
-function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(toast.h); toast.h=setTimeout(()=>t.classList.remove('on'),2200); }
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(toast.h); toast.h=setTimeout(()=>t.classList.remove('on'),Math.min(9000,2200+String(msg).length*40)); }
 function pickedRows(defN){
   if (S.sel.size) return S.res.filter(x=>S.sel.has(x.i)).map(x=>ROWS[x.i]);
   return S.res.slice(0,defN).map(x=>ROWS[x.i]);

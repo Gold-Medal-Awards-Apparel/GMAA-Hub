@@ -83,6 +83,7 @@ function makeSync({ dir, safeStorage, baseUrl }) {
       if (j.errors && j.errors.length) {
         const msg = JSON.stringify(j.errors);
         if (/THROTTLED/i.test(msg)) { await new Promise(s => setTimeout(s, 2000 * (attempt + 1))); continue; }
+        if (/access denied|not approved|protected customer/i.test(msg) && /draft/i.test(msg)) throw new Error('Shopify has not given this app permission to read draft orders. In the Dev Dashboard add the read_draft_orders scope, release a new version, then approve the update on the store.');
         if (/access denied|not approved|protected customer/i.test(msg)) throw new Error((/product/i.test(msg) ? 'Shopify has not given this app permission to read products yet. In the Dev Dashboard add the read_products scope, release a new version, then approve the update on the store. Details: ' : 'Shopify denied access to some data: ') + (j.errors[0].message || msg) + ' (In the Dev Dashboard, check the app scopes and the protected customer data request.)');
         const err = new Error('Shopify error: ' + (j.errors[0].message || msg)); err.cost = /cost|too (large|complex|expensive)|exceed/i.test(msg); throw err;
       }

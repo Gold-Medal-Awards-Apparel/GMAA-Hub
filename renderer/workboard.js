@@ -94,7 +94,7 @@
     if (st.tv && false) return;
     if (!(st.jobs || []).some(j => isDraftRef(j.order_ref)) || Date.now() - lastDraft < 90000) return;
     lastDraft = Date.now();
-    try { const r = await window.api.syncDrafts(); if (r && r.changed) { if (!st.editing) { await pull(true); } toast(r.changed + ' draft order' + (r.changed === 1 ? '' : 's') + ' became real orders. Order numbers updated.'); } } catch (e) {}
+    try { const r = await window.api.syncDrafts(); if (r && r.error && !r.offline && !checkDrafts.warned) { checkDrafts.warned = true; toast('Draft order check failed: ' + r.error); } if (r && r.changed) { if (!st.editing) { await pull(true); } toast(r.changed + ' draft order' + (r.changed === 1 ? '' : 's') + ' became real orders. Order numbers updated.'); } } catch (e) {}
   }
   async function write(fn, okMsg) {   // runs a change; asks for the PIN first if needed, then shows any message
     if (!(await ensureAuth())) return null;
@@ -287,7 +287,7 @@
       if ($('jTitle').value === af.title) $('jTitle').value = '';
       if ($('jDet').value === af.det) $('jDet').value = '';
       st.autofill = null;
-      toast('No order with that number was found in Shopify or the old-store history.'); return;
+      toast(isDraftRef(ref) ? 'No draft order ' + ref.trim() + ' was found. If it exists in Shopify, the Hub app may be missing the read_draft_orders permission (see any Shopify message just before this).' : 'No order with that number was found in Shopify or the old-store history.'); return;
     }
     // A lookup replaces customer, job and details completely, so changing 1055 to 1056 leaves nothing of 1055 behind.
     $('jRef').value = r.tag; $('jCust').value = r.customer; $('jTitle').value = r.title; $('jDet').value = r.details;
