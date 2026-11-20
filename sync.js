@@ -187,6 +187,70 @@ function makeSync({ dir, safeStorage, baseUrl }) {
     return out;
   }
 
+
+  // ---- Inbox: every unfulfilled order and open draft, shaped like a board job. ----
+  const IN_FIELDS = `id legacyResourceId name createdAt tags
+      customer{ firstName lastName defaultAddress{ company } }
+      billingAddress{ name company }
+      lineItems(first:60){ nodes{ name quantity sku } }`;
+  const IN_ORDERS = `query($cursor:String,$q:String){ orders(first:50, after:$cursor, query:$q, sortKey:CREATED_AT, reverse:true){ pageInfo{hasNextPage endCursor} nodes{
+      ${IN_FIELDS} note cancelledAt displayFulfillmentStatus displayFinancialStatus
+      shippingLines(first:3){ nodes{ title } } currentTotalPriceSet{ shopMoney{ amount } } } } }`;
+  const IN_DRAFTS = `query($cursor:String,$q:String){ draftOrders(first:50, after:$cursor, query:$q){ pageInfo{hasNextPage endCursor} nodes{
+      ${IN_FIELDS} note2 status shippingLine{ title } totalPriceSet{ shopMoney{ amount } } order{ name } } } }`;
+  function inShape(o, kind) {
+    const cu = o.customer || {}, ba = o.billingAddress || {};
+    const cust = ([cu.firstName, cu.lastName].filter(Boolean).join(' ') || ba.name || '').trim();
+    const co = (ba.company || (cu.defaultAddress && cu.defaultAddress.company) || '').trim();
+    const items = ((o.lineItems && o.lineItems.nodes) || []).map(li => ({ name: String(li.name || '').trim(), qty: li.quantity || 0, sku: li.sku || '' })).filter(i => i.qty > 0);
+    const big = items.slice().sort((a, b) => b.qty - a.qty)[0];
+    const customer = co && cust ? co + ' (' + cust + ')' : (co || cust);
+    const title = big ? (big.qty + ' × ' + big.name).slice(0, 110) + (items.length > 1 ? ' + ' + (items.length - 1) + ' more item' + (items.length > 2 ? 's' : '') : '') : '';
+    const n = parseInt(String(o.name).replace(/\D/g, ''), 10) || 0, draft = kind === 'draft';
+    const ship = draft ? ((o.shippingLine && o.shippingLine.title) || '') : ((o.shippingLines && o.shippingLines.nodes) || []).map(x => x.title).filter(Boolean).join(', ');
+    const note = draft ? (o.note2 || '') : (o.note || '');
+    const total = num(draft ? (o.totalPriceSet && o.totalPriceSet.shopMoney.amount) : (o.currentTotalPriceSet && o.currentTotalPriceSet.shopMoney.amount));
+    const paid = draft ? 'draft - not an order yet' : String(o.displayFinancialStatus || '').toLowerCase().replace(/_/g, ' ');
+    const det = [items.map(i => i.qty + ' × ' + i.name + (i.sku ? ' [' + i.sku + ']' : '')).join('\n')];
+    if (ship) det.push('Shipping method: ' + ship);
+    if (note) det.push('Order note: ' + note);
+    det.push('Ordered ' + localDate(o.createdAt) + ' · Total $' + total.toFixed(2) + (paid ? ' · ' + paid : ''));
+    return { gid: o.id, kind, ref: draft ? 'Draft #D' + n : 'New #' + n, customer, title, details: det.filter(Boolean).join('\n'), created: localDate(o.createdAt),
+      tags: (o.tags || []).map(t => String(t).trim()).filter(Boolean), cancelled: !!o.cancelledAt, fulfilled: o.displayFulfillmentStatus === 'FULFILLED' };
+  }
+  // Everything that could be a job right now. Fulfilled and cancelled orders are left out here.
+  async function inboxFeed() {
+    const c = loadCreds(); if (!c) throw new Error('Shopify is not connected yet.');
+    const token = await getToken(c), items = [];
+    for (const [query, key, q, kind] of [[IN_ORDERS, 'orders', 'status:open AND (fulfillment_status:unshipped OR fulfillment_status:partial)', 'order'], [IN_DRAFTS, 'draftOrders', 'status:open', 'draft']]) {
+      let cursor = null;
+      for (let page = 0; page < 8; page++) {
+        const d = await gql(c, token, { cursor, q }, query), conn = d[key]; if (!conn) break;
+        for (const o of conn.nodes) { const it = inShape(o, kind); if (!it.cancelled && !it.fulfilled && !(kind === 'draft' && o.order)) items.push(it); }
+        if (!conn.pageInfo.hasNextPage) break; cursor = conn.pageInfo.endCursor;
+      }
+    }
+    return items;
+  }
+  // Current state of specific Shopify records (by id), to flag cancelled/fulfilled and to follow a draft that became an order.
+  const IN_NODES = `query($ids:[ID!]!){ nodes(ids:$ids){ __typename
+      ... on Order{ id name cancelledAt displayFulfillmentStatus }
+      ... on DraftOrder{ id name status order{ name } } } }`;
+  async function inboxState(gids) {
+    const c = loadCreds(); if (!c) throw new Error('Shopify is not connected yet.');
+    const token = await getToken(c), out = {};
+    for (let i = 0; i < gids.length; i += 50) {
+      const chunk = gids.slice(i, i + 50), d = await gql(c, token, { ids: chunk }, IN_NODES);
+      (d.nodes || []).forEach((n, k) => {
+        const gid = chunk[k];
+        if (!n) out[gid] = { gone: true };
+        else if (n.__typename === 'DraftOrder') out[gid] = n.status === 'COMPLETED' && n.order ? { order: parseInt(String(n.order.name).replace(/\D/g, ''), 10) } : (n.status === 'OPEN' ? {} : { gone: true });
+        else out[gid] = { cancelled: !!n.cancelledAt, fulfilled: n.displayFulfillmentStatus === 'FULFILLED' };
+      });
+    }
+    return out;
+  }
+
   // Live lookup of one order by its number, straight from Shopify (works for orders newer than the last sync).
   async function lookupOrder(numStr) {
     const dn = draftNum(numStr); if (dn) return lookupDraft(dn);
@@ -288,6 +352,6 @@ function makeSync({ dir, safeStorage, baseUrl }) {
     return { c, co, r, cm, store: handle, newOrders: Object.keys(s.orders).length };
   }
 
-  return { loadCreds, saveCreds, clearCreds, getToken, sync, lookupOrder, draftStatus, draftNum, syncProducts, loadProducts, status, merge, normShop };
+  return { loadCreds, saveCreds, clearCreds, getToken, sync, lookupOrder, draftStatus, draftNum, inboxFeed, inboxState, syncProducts, loadProducts, status, merge, normShop };
 }
 module.exports = { makeSync, normShop };

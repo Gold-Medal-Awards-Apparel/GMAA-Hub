@@ -24,6 +24,8 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS time_entries (id TEXT PRIMARY KEY, person TEXT NOT NULL COLLATE NOCASE, clock_in TEXT NOT NULL, clock_out TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '', edited_by TEXT NOT NULL DEFAULT '', edited_at TEXT NOT NULL DEFAULT '', deleted INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)",
   "CREATE UNIQUE INDEX IF NOT EXISTS ux_time_open ON time_entries(person) WHERE clock_out='' AND deleted=0",
   "CREATE INDEX IF NOT EXISTS idx_time_in ON time_entries(clock_in)",
+  "CREATE TABLE IF NOT EXISTS inbox (id TEXT PRIMARY KEY, gid TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'order', ref TEXT NOT NULL DEFAULT '', customer TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', details TEXT NOT NULL DEFAULT '', due TEXT NOT NULL DEFAULT '', created TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '', sections TEXT NOT NULL DEFAULT '', assign TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'new', flag TEXT NOT NULL DEFAULT '', job_id TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL DEFAULT '')",
+  "CREATE UNIQUE INDEX IF NOT EXISTS ux_inbox_gid ON inbox(gid)",
   "CREATE INDEX IF NOT EXISTS idx_inv_items_code ON inv_items(code)",
   "CREATE INDEX IF NOT EXISTS idx_inv_stock_item ON inv_stock(item_id)",
   "CREATE INDEX IF NOT EXISTS idx_inv_moves_at ON inv_moves(at)",
@@ -314,6 +316,97 @@ function makeCloud({ dir, safeStorage, baseUrl }) {
     }
     return { checked: rows.length, changed };
   }
+  // ---------------- Inbox: Shopify orders and open drafts waiting to be checked and assigned ----------------
+  const INBOX_SKIP_DEFAULT = 'Ivy Tech Holiday 2026, Mac Holiday 2026';
+  const orderNum = ref => { const s = String(ref || ''); if (/old/i.test(s) || /\bD\s*\d/i.test(s)) return 0; const m = /(?:^|\D)(\d{3,6})(?!\d)/.exec(s); return m ? parseInt(m[1], 10) : 0; };
+  const draftNumOf = ref => { const m = /^\s*(?:draft\s*)?#?\s*D\s*(\d+)\s*$/i.exec(String(ref || '')); return m ? parseInt(m[1], 10) : 0; };
+  const addDays = (ymd, n) => { const d = new Date(ymd + 'T12:00:00'); d.setDate(d.getDate() + n); const p = x => String(x).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); };
+  async function inboxSettings(c) {
+    const rows = (await query(c, "SELECT k,v FROM settings WHERE k IN ('inbox_skip_tags','inbox_due_days')")).rows, m = {};
+    rows.forEach(r => { m[r.k] = r.v; });
+    const days = parseInt(m.inbox_due_days, 10);
+    return { skipTags: m.inbox_skip_tags !== undefined ? m.inbox_skip_tags : INBOX_SKIP_DEFAULT, dueDays: days > 0 && days < 120 ? days : 14 };
+  }
+  // Pulls new orders/drafts into the inbox (no duplicates), and keeps the waiting ones up to date. feed()/state() come from sync.js.
+  async function inboxImport(feed, state) {
+    const c = need(); await ensure(c); const st = await inboxSettings(c);
+    const skip = new Set(st.skipTags.split(/[,\n]/).map(t => t.trim().toLowerCase()).filter(Boolean));
+    const now = () => new Date().toISOString();
+    const have = (await query(c, 'SELECT * FROM inbox')).rows, gids = new Set(have.map(r => r.gid));
+    const onBoard = new Set(), boardDrafts = new Set();
+    (await query(c, 'SELECT order_ref FROM jobs')).rows.forEach(r => { const n = orderNum(r.order_ref), d = draftNumOf(r.order_ref); if (n) onBoard.add(n); if (d) boardDrafts.add(d); });
+    have.forEach(r => { const n = orderNum(r.ref), d = draftNumOf(r.ref); if (n) onBoard.add(n); if (d) boardDrafts.add(d); });
+    const items = await feed(), seen = new Set(items.map(i => i.gid));
+    let added = 0, updated = 0;
+    // 1) Waiting rows that no longer show up as open: cancelled, fulfilled, deleted, or a draft that became an order.
+    const waiting = have.filter(r => r.state === 'new' && !seen.has(r.gid));
+    if (waiting.length) {
+      const info = await state(waiting.map(r => r.gid));
+      for (const r of waiting) {
+        const s = info[r.gid]; if (!s) continue;
+        let set = null;
+        if (s.order) set = { kind: 'order', ref: 'New #' + s.order, flag: '' };
+        else if (s.gone) set = { flag: 'Deleted or closed in Shopify' };
+        else if (s.cancelled) set = { flag: 'Cancelled in Shopify' };
+        else if (s.fulfilled) set = { flag: 'Fulfilled in Shopify' };
+        else if (r.flag) set = { flag: '' };
+        if (!set || Object.keys(set).every(k => r[k] === set[k])) continue;
+        const cols = Object.keys(set);
+        await query(c, 'UPDATE inbox SET ' + cols.map(k => k + '=?').join(', ') + ', updated_at=?, updated_by=? WHERE id=?', [...cols.map(k => set[k]), now(), 'Shopify', r.id]);
+        if (set.ref) { onBoard.add(s.order); await log(c, 'Shopify', { id: r.id, order_ref: set.ref, title: r.title }, r.ref.trim() + ' became order ' + set.ref + ' (still in the Inbox)'); }
+        updated++;
+      }
+    }
+    // 2) New items.
+    for (const it of items) {
+      if (gids.has(it.gid)) continue;
+      if (it.tags.some(t => skip.has(t.toLowerCase()))) continue;
+      const n = orderNum(it.ref), d = draftNumOf(it.ref);
+      if ((n && onBoard.has(n)) || (d && boardDrafts.has(d))) continue;
+      const t = now();
+      const r = await query(c, 'INSERT OR IGNORE INTO inbox (id,gid,kind,ref,customer,title,details,due,created,tags,created_at,updated_at,updated_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        [newId(), str(it.gid, 120), it.kind, str(it.ref, 40), str(it.customer, 120), str(it.title, 200), str(it.details, 5000), addDays(it.created, st.dueDays), it.created, str(it.tags.join(', '), 300), t, t, 'Shopify']);
+      if (r.changes) { added++; if (n) onBoard.add(n); if (d) boardDrafts.add(d); }
+    }
+    return { added, updated, waiting: have.filter(r => r.state === 'new').length + added };
+  }
+  async function inboxList() {
+    const c = need(); await ensure(c);
+    await query(c, "UPDATE inbox SET state='new' WHERE state='sending' AND updated_at < ?", [new Date(Date.now() - 10 * 60 * 1000).toISOString()]);
+    const rows = (await query(c, "SELECT * FROM inbox WHERE state IN ('new','dismissed') ORDER BY created DESC, ref DESC LIMIT 800")).rows;
+    const staff = (await query(c, 'SELECT name FROM staff ORDER BY name COLLATE NOCASE')).rows.map(r => r.name);
+    return { rows, staff, settings: await inboxSettings(c) };
+  }
+  async function inboxSave(j) {
+    const c = need(); await ensure(c); const by = await actor(c);
+    const sec = cleanSections(j.sections), f = { ref: str(j.ref, 40), customer: str(j.customer, 120), title: str(j.title, 200), details: str(j.details, 5000), due: /^\d{4}-\d{2}-\d{2}$/.test(j.due || '') ? j.due : '' };
+    const asg = cleanAssign(j.assign, sec);
+    const r = await query(c, "UPDATE inbox SET ref=?,customer=?,title=?,details=?,due=?,sections=?,assign=?,updated_at=?,updated_by=? WHERE id=? AND state='new' AND updated_at=?",
+      [f.ref, f.customer, f.title, f.details, f.due, JSON.stringify(sec), JSON.stringify(asg), new Date().toISOString(), by, str(j.id, 40), str(j.base, 40)]);
+    if (!r.changes) return { conflict: true };
+    return { ok: true };
+  }
+  async function inboxSend(j) {
+    const c = need(); await ensure(c); const by = await actor(c);
+    const sec = cleanSections(j.sections);
+    if (!Object.keys(sec).length) return { error: 'Pick at least one section (Embroidery, Heat press, Sublimation, or Trophy & awards) before sending it to the board.' };
+    const claim = await query(c, "UPDATE inbox SET state='sending', updated_at=?, updated_by=? WHERE id=? AND state='new'", [new Date().toISOString(), by, str(j.id, 40)]);
+    if (!claim.changes) return { error: 'Someone else already sent this one to the board, or removed it. Refresh the Inbox.' };
+    let res;
+    try { res = await saveJob({ id: '', order_ref: j.ref, customer: j.customer, title: j.title, details: j.details, due: j.due, sections: j.sections, assign: j.assign }); }
+    catch (e) { await query(c, "UPDATE inbox SET state='new' WHERE id=? AND state='sending'", [str(j.id, 40)]); throw e; }
+    if (!res || !res.ok) { await query(c, "UPDATE inbox SET state='new' WHERE id=? AND state='sending'", [str(j.id, 40)]); return res || { error: 'Could not create the job.' }; }
+    await query(c, "UPDATE inbox SET state='sent', job_id=?, updated_at=? WHERE id=?", [res.id, new Date().toISOString(), str(j.id, 40)]);
+    return { ok: true, id: res.id };
+  }
+  async function inboxDismiss(id, undo) {
+    const c = need(); await ensure(c); const by = await actor(c);
+    const r = await query(c, 'UPDATE inbox SET state=?, updated_at=?, updated_by=? WHERE id=? AND state=?', [undo ? 'new' : 'dismissed', new Date().toISOString(), by, str(id, 40), undo ? 'dismissed' : 'new']);
+    if (!r.changes) return { error: 'That one has already changed. Refresh the Inbox.' };
+    const row = (await query(c, 'SELECT ref,title,customer FROM inbox WHERE id=?', [str(id, 40)])).rows[0];
+    if (row) await log(c, by, { id: str(id, 40), order_ref: row.ref, title: row.title }, (by || 'Someone') + (undo ? ' restored ' : ' dismissed ') + lab({ order_ref: row.ref, title: row.title, customer: row.customer }) + (undo ? ' to the Inbox' : ' from the Inbox (not an order)'));
+    return { ok: true };
+  }
   async function updates() {
     const c = need(); await ensure(c);
     const to = ((await query(c, "SELECT v FROM settings WHERE k='updates_to'")).rows[0] || {}).v || '';
@@ -437,6 +530,6 @@ function makeCloud({ dir, safeStorage, baseUrl }) {
   function status() { const c = loadCreds(); return { configured: !!c, accountId: c ? c.accountId : '', databaseId: c ? c.databaseId : '' }; }
   const catalog = require('./catalog.js').makeCatalog({ need, ensure, query, actor, newId, str, dir });
   const timesheet = require('./timesheet.js').makeTimesheet({ need, ensure, query, actor, newId, str, verify });
-  return { syncDrafts, catalog, timesheet, loadCreds, saveCreds, clearCreds, test, pull, cached, authState, login, logout, ping, addStaff, setPin, removeStaff, setAdmin, updates, saveNote, deleteNote, saveJob, moveSection, setAssign, deleteJob, archiveJob, addJobNote, saveSetting, status, query, invPull, invMove, invSaveItem, invSaveStock, invDelete, invMoves, invImport };
+  return { inboxImport, inboxList, inboxSave, inboxSend, inboxDismiss, syncDrafts, catalog, timesheet, loadCreds, saveCreds, clearCreds, test, pull, cached, authState, login, logout, ping, addStaff, setPin, removeStaff, setAdmin, updates, saveNote, deleteNote, saveJob, moveSection, setAssign, deleteJob, archiveJob, addJobNote, saveSetting, status, query, invPull, invMove, invSaveItem, invSaveStock, invDelete, invMoves, invImport };
 }
 module.exports = { makeCloud, STATUSES, SECTIONS };
