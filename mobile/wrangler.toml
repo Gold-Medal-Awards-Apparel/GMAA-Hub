@@ -1,0 +1,11 @@
+name = "gmaa-hub-phone"
+main = "dist/worker.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "gmaa-hub"
+database_id = "8dee9967-8e8a-44e5-8373-7cfebdb0363d"
+
+# Set ACCESS_TEAM, ACCESS_AUD and USERS in the Cloudflare dashboard (Settings -> Variables), not here.

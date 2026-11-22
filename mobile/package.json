@@ -1,0 +1,1 @@
+{ "name": "gmaa-hub-mobile", "private": true, "type": "module", "scripts": { "build": "node build.cjs", "test": "node test/api_test.mjs" } }
